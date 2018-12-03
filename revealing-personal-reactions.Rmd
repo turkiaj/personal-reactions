@@ -14,7 +14,18 @@ knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 source("mebn/MEBN.r")
 ```
 
-## Introduction
+This notebook provides a reproducible modelling of nutrional effects that is the main contribution of the article. The article provides more theory, but the experiment is here in detail.
+
+(This should go to theory part in paper..)
+
+- What kind on process we are modelling?
+  - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
+
+- What are our assumptions?
+  - Linear
+  - Response time
+  - Multi-response
+
 
 ## Data
 
@@ -34,7 +45,34 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 ```
 
-## Bayesian Network
+## Bayesian network
+
+- Directed graph
+- It is assumed that only nutrients affect blood tests
+- Joint distribution is factorized into local distributions
+
+```{r}
+
+```
+
+## Checking the fit of the local models
+
+
+## Principal components
+
+After finding a reasonable fit, we can analyze the principal components that explain the variation.
+
+## Pruning the graph
+
+- Remove the insignicant components: more informative graph and multiresponse
+
+## Inference
+
+- Personal graph
+- Clusters of similar reactions types
+
+
+
 
 
 
