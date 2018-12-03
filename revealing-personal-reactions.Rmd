@@ -1,0 +1,41 @@
+---
+title: "Personal Effects of Nutrition"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+
+# Load common MEBN package
+source("mebn/MEBN.r")
+```
+
+## Introduction
+
+## Data
+
+Data description
+
+```{r load_data, echo=FALSE, message=FALSE}
+
+# Read the data description
+datadesc <- read.csv(file="Data description.csv", header = TRUE, sep = ";")
+
+# Read the actual data matching the description
+sysdimet <- read.csv(file="data/SYSDIMET_diet.csv", sep=";", dec=",")
+
+# Define how to iterate through the graph
+assumedpredictors <- datadesc[datadesc$Order==100,]    
+assumedtargets <- datadesc[datadesc$Order==200,] 
+
+```
+
+## Bayesian Network
+
+
+
+

@@ -1,0 +1,28 @@
+Name;Description;Order;Lowerbound;Upperbound;ScaleMin;ScaleMax;Unit;Distribution
+sukupuoli;Sukupuoli (naiset);100;;;;;;Bernoulli
+kolestrolilaakitys;Kolestrolilääkitys;100;;;;;;Bernoulli
+energia;Energia;100;;;;;;Gaussian
+prot;Proteiini;100;2000,00;2500,00;1500,00;3000,00;mg/d;Gaussian
+rasva;Rasvat;100;1500,00;2000,00;1200,00;2300,00;mg/d;Gaussian
+safa;Tyydyttyneet rasvahapot;100;1,48;7,63;;;pmol/l;Gaussian
+mufa;Kertatyydyttämättömät rasvahapot;100;3,20;8,10;;;pmol/l;Gaussian
+pufa;Monityydyttämättömät rasvahapot;100;3,30;4,90;;;pmol/l;Gaussian
+hhydr;Hiilihydraatit;100;;;;;;Gaussian
+kuitu;Kuidut;100;;;;;;Gaussian
+linoli;Linolihappo;100;0,71;1,53;;;pmol/l;Gaussian
+linoleeni;Linoleenihappo;100;36,00;45,00;;;pmol/l;Gaussian
+kol;Kokonaiskolestroli;100;1,15;1,25;;;pmol/l;Gaussian
+sakkar;Sakkaroosi;100;;;;;;Gaussian
+sellul;Selluloosa;100;;;;;;Gaussian
+ligniini;Ligniini;100;;;;;;Gaussian
+alkoholi;Alkoholi;100;;;;;;Gaussian
+dvit;D-vitamiini;100;;;;;;Gaussian
+foolih;Foolihappo (B9-vitamiini);100;;;;;;Gaussian
+cvit;C-vitamiini;100;;;;;;Gaussian
+epa;EPA-rasvahappo;100;;;;;;Gaussian
+dha;DHA-rasvahappo;100;;;;;;Gaussian
+fshdl;HDL-kolestroli;200;;;0;10;unit;Gaussian
+fsldl;LDL-kolestroli;200;;;0;10;unit;Gaussian
+fsins;Insuliini;200;;;0;45;unit;Gaussian
+fskol;Kokonaiskolestroli;200;;;0;10;unit;Gaussian
+fpgluk;Glukoosi;200;;;0;45;unit;Gaussian
