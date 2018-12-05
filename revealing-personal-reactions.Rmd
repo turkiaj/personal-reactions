@@ -20,12 +20,13 @@ This notebook provides a reproducible modelling of nutrional effects that is the
 
 - What kind on process we are modelling?
   - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
+  - The nutritional reactions form an interconnected system. We propose to model the system with a directed acyclic graph (DAG) while having only the nutrients affecting the blood test values. When this DAG describes a joint probability distribution, it is called a Bayesian Network. The joint propability distribution can furhermore factorized into local distributions with blood tests as responses and nutrients in diet its predictors. 
 
-- What are our assumptions?
+**Assumptions for local distributions**
+
   - Linear
   - Response time
   - Multi-response
-
 
 ## Data
 
@@ -45,11 +46,10 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 ```
 
-## Bayesian network
+When constructing the BN we iterate through all the target nodes (the blood tests) can estimate their local probability distributions given all the nutrients at the patient's diet.
 
-- Directed graph
-- It is assumed that only nutrients affect blood tests
-- Joint distribution is factorized into local distributions
+- Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
+
 
 ```{r}
 
