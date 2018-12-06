@@ -50,13 +50,90 @@ When constructing the BN we iterate through all the target nodes (the blood test
 
 - Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
 
+```{r, echo=FALSE}
 
-```{r}
+my.RanefTest <- function(localsummary, PredictorId)
+{
+  abs(localsummary$fixef[PredictorId]) > 0.001 || localsummary$ranef_sd[PredictorId] > 0.001
+}
+```
 
+```{r, echo=FALSE, message=FALSE}
+# Add data columns describing random variables as nodes to the graph
+# - initial_graph is iGraph object with only nodes and no edges 
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+```
+
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+
+sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models", 
+                                   stan_model_file = "mebn/BLMM_ar1.stan",
+                                   edge_significance_test = my.RanefTest, 
+                                   normalize_values = TRUE, 
+                                   reg_params = shrinkage_parameters)
 ```
 
 ## Checking the fit of the local models
 
+```{r ppc, echo=FALSE, eval=FALSE}
+library(rstan)
+library(bayesplot)
+library(ggplot2)
+
+theme_set(bayesplot::theme_default())
+
+personal_variations_from_mean <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+personal_effects <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+personal_effects_quantiles <- matrix(NA, ncol=3, nrow=106*22*5)
+
+dens_plots <- list()
+i <- 1
+
+for (targetname in assumedtargets$Name)
+{
+  target_blmm <- mebn.get_localfit(targetname)
+  true_value <- as.vector(sysdimet[,targetname])
+
+  posterior <- extract(target_blmm, pars = c("Y_rep", "personal_effect", "b", "ar1"))
+  posterior_y_50 <- posterior$Y_rep[1:50,]
+  
+  # Back to original scale 
+  post.rep <- mebn.rescale(posterior_y_50, mean(true_value))
+
+  b_blmm <- colMeans(posterior$b)
+  beta_b_blmm <- colMeans(posterior$personal_effect)
+  
+  pe <- summary(target_blmm, pars="personal_effect", probs = c(0.25, 0.75))$summary[,c(1,4,5)]
+  
+  if (i == 1) {
+    # variance of the intercept is omitted
+    personal_variations_from_mean <- b_blmm[,2:dim(b_blmm)[2]]
+    personal_effects <- beta_b_blmm
+    personal_effects_quantiles <- pe
+  }
+  else
+  {
+    personal_variations_from_mean <- cbind(personal_variations_from_mean, b_blmm[,2:dim(b_blmm)[2]])
+    personal_effects <- cbind(personal_effects, beta_b_blmm)
+    personal_effects_quantiles <- rbind(pe)
+  }
+
+  dens_plots[[i]] <- ppc_dens_overlay(true_value, post.rep) + 
+    coord_cartesian(xlim = c(assumedtargets[assumedtargets$Name == targetname,]$ScaleMin,assumedtargets[assumedtargets$Name == targetname,]$ScaleMax)) +
+    ggtitle(targetname)
+  
+  i <- i + 1
+}
+
+bayesplot_grid(plots = dens_plots, legends = FALSE)
+```
 
 ## Principal components
 
@@ -71,8 +148,273 @@ After finding a reasonable fit, we can analyze the principal components that exp
 - Personal graph
 - Clusters of similar reactions types
 
+### Verkkokuvaaja 
+Tämä kuvaaja kokoaa yhteen tyypilliset reagointitavat, jossa punainen viiva kuvaa nostavaa ja sininen laskevaa vaikutusta. Harmaa
+
+```{r, echo=TRUE, message=TRUE}
+sysdimet_visgraph <- mebn.visualization_graph(sysdimet_graph)
+
+# Filter only the most significant edges having large typical effect or large personal variance
+alledges <- E(sysdimet_visgraph)
+top_neg_edges <- head(alledges[order(alledges$weight)], 15)
+top_pos_edges <- head(alledges[order(-alledges$weight)], 15)
+top_pers_edges <- head(alledges[order(-alledges$b_sigma)], 15)
+
+# Comment out this row to see all the connections at the model
+sysdimet_visgraph <- delete.edges(sysdimet_visgraph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
+
+# Write the MEBN in GEXF format for visualization
+mebn.write_gexf(sysdimet_visgraph, "sysdimet.gexf")
+
+# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
+gexf_file <- file("sysdimet.gexf") 
+graph_string <- paste(readLines(gexf_file), collapse = "")
+```
+
+<script>
+  var sysdimet_graph = '`r graph_string`';
+</script>
+
+<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
+<div id="sigmacontainer"></div>
+
+```{r, echo=FALSE, message=FALSE}
+# Load the graph drawing JavaScript
+htmltools::includeHTML("population_graph.htm")
+```
+</br>
+
+### Henkilökohtainen verkko 
+
+```{r, echo=TRUE, message=TRUE}
+library(rstan)
+source("mebn/MEBN.r")
+
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+
+p37_graph <- mebn.personal_graph(reaction_graph = initial_graph, 
+                                   person_id = 37,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets)
+
+# Write the MEBN in GEXF format for visualization
+mebn.write_gexf(p37_graph, "p37.gexf")
+
+# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
+gexf_file <- file("p37.gexf") 
+graph_string <- paste(readLines(gexf_file), collapse = "")
+```
+
+<script>
+  var sysdimet_graph = '`r graph_string`';
+</script>
+
+<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
+<div id="sigmacontainer"></div>
+
+```{r, echo=FALSE, message=FALSE}
+# Load the graph drawing JavaScript
+htmltools::includeHTML("population_graph.htm")
+```
+</br>
 
 
+
+
+## Piileviä reagointitapojen ryhmiä
+
+```{r, echo=FALSE, eval=FALSE}
+library(stats)
+library(gridExtra)
+
+k.max <- 8
+wss_effects <- sapply(1:k.max, function(k){kmeans(personal_effects, k, nstart=50, iter.max = 15)$tot.withinss})
+wss_vars <- sapply(1:k.max, function(k){kmeans(personal_variations_from_mean, k, nstart=50, iter.max = 15)$tot.withinss})
+
+df_vars <- data.frame(x = 1:k.max, y = wss_vars)
+df_effects <- data.frame(x = 1:k.max, y = wss_effects)
+
+plot1 <- ggplot(data=df_effects, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Eri tavoin reagoivia ryhmiä") +
+  xlab("Ryhmien määrä") +
+  ylab("Ryhmien välinen ero")
+
+plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Poikkeama tyypillisestä") +
+  xlab("Ryhmien määrä") +
+  ylab("Ryhmien välinen ero")
+
+gridExtra::grid.arrange(plot1,plot2,nrow=1)
+```
+
+### Kuinka tyypillisestä reagointitavasta poiketaan
+
+Tässä kaavion X-akselin nollakohdassa on kyseisen reagointitavan tyypillinen tai keskimääräinen arvo, ja palkit kuvaavat löydettyjen ryhmien poikkeamaa tästä keskiarvosta.
+
+```{r variation clusters, echo=FALSE, eval=FALSE}
+km <- kmeans(personal_variations_from_mean, centers = 4)
+
+sysdimet$variation_group <- km$cluster # mihin klusteriin kukin potilas kuuluu. vertaa tätä esimerkiksi geeneihin
+
+variations_data <- as.data.frame(t(km$centers))
+variations_data$predictor <- rep(assumedpredictors$Description,nrow(assumedtargets))
+
+cl <- rep(1,22)
+t_idx <- c(cl,cl+1,cl+2,cl+3,cl+4)
+
+variations_data$response <- assumedtargets$Description[t_idx]
+effect_levels <- paste0(variations_data$predictor," -> ", variations_data$response)
+
+variations_data$effect <- factor(effect_levels, levels=effect_levels)
+
+# Yhteenlaskettu vaikutus kaikissa klustereissa
+variations_data$overall_effect <- abs(variations_data$'1')+abs(variations_data$'2')+abs(variations_data$'3')+abs(variations_data$'4')
+
+# Suodata näistä vain suurimmat näkyviin
+variations_data.filtered <- variations_data[variations_data$overall_effect > 0.002,]
+
+# Piirtoa varten eri klustereiden arvot samaan sarakkeeseen ja oma kenttä merkitsemään klusteria
+
+plot_data <- variations_data.filtered[c("effect")]
+plot_data$amount <- variations_data.filtered$'1'
+plot_data$cluster <- 1
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'2'
+temp_data$cluster <- 2
+
+plot_data <- rbind(plot_data, temp_data)
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'3'
+temp_data$cluster <- 3
+
+plot_data <- rbind(plot_data, temp_data)
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'4'
+temp_data$cluster <- 4
+
+plot_data <- rbind(plot_data, temp_data)
+
+plot_data$compared_to_typical <- ifelse(plot_data$amount < 0, "below", "above")
+
+ggplot(plot_data, aes(x=effect, y=amount)) + 
+  geom_bar(stat='identity', aes(fill=compared_to_typical), width=.5, show.legend = FALSE) +
+  coord_flip() +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+  facet_wrap(~cluster)
+
+```
+
+### Reagointitapojen ryhmiä
+
+Tässä ryhmittelyä on tehty itse vaikutuksen perusteella.
+
+```{r effect clusters, echo=FALSE, eval=FALSE}
+km <- kmeans(personal_effects, centers = 4)
+
+sysdimet$effect_group <- km$cluster # mihin klusteriin kukin potilas kuuluu. vertaa tätä esimerkiksi geeneihin
+
+variations_data <- as.data.frame(t(km$centers))
+variations_data$predictor <- rep(assumedpredictors$Description,nrow(assumedtargets))
+
+cl <- rep(1,22)
+t_idx <- c(cl,cl+1,cl+2,cl+3,cl+4)
+
+variations_data$response <- assumedtargets$Description[t_idx]
+effect_levels <- paste0(variations_data$predictor," -> ", variations_data$response)
+
+variations_data$effect <- factor(effect_levels, levels=effect_levels)
+
+# Yhteenlaskettu vaikutus kaikissa klustereissa
+variations_data$overall_effect <- abs(variations_data$'1')+abs(variations_data$'2')+abs(variations_data$'3')+abs(variations_data$'4')
+
+# Suodata näistä vain suurimmat näkyviin
+variations_data.filtered <- variations_data[variations_data$overall_effect > 0.004,]
+
+# Piirtoa varten eri klustereiden arvot samaan sarakkeeseen ja oma kenttä merkitsemään klusteria
+
+plot_data <- variations_data.filtered[c("effect")]
+plot_data$amount <- variations_data.filtered$'1'
+plot_data$cluster <- 1
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'2'
+temp_data$cluster <- 2
+
+plot_data <- rbind(plot_data, temp_data)
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'3'
+temp_data$cluster <- 3
+
+plot_data <- rbind(plot_data, temp_data)
+
+temp_data <- variations_data.filtered[c("effect")]
+temp_data$amount <- variations_data.filtered$'4'
+temp_data$cluster <- 4
+
+plot_data <- rbind(plot_data, temp_data)
+
+plot_data$effect_direction <- ifelse(plot_data$amount > 0, "lowers", "raises")
+
+ggplot(plot_data, aes(x=effect, y=amount)) + 
+  geom_bar(stat='identity', aes(fill=effect_direction), width=.7, show.legend = FALSE) +
+  coord_flip() +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+  facet_wrap(~cluster)
+```
+
+### Henkilökohtaisten ennusteiden varmuus
+
+Kaikkien estimoitujen henkilökohtaisten vaikutusten 95%-luottamusvälit sisältävät nollan. Tässä on kuitenkin esimerkkejä voimakkaimmista. Valitaan joku potilas edellä löydetystä ryhmästä 1 eli keskimäärin voimakkaammin insuliinilla reagoivista.
+
+```{r, echo=FALSE, eval=FALSE}
+library(bayesplot)
+
+# Datan visuaalisen tarkastelun perusteella tämän henkilön insuliinitaso nousi selvästi 
+# proteiinin saannin myötä
+
+subject_id <- 46   # tumman sininen
+
+protein_id <- match("prot", datadesc$Name)
+
+fsins_blmm <- mebn.get_localfit("fsins")
+posterior <- as.array(fsins_blmm)
+
+prot_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",protein_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("proteiini - insuliini (S46)") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+prot_plot
+
+posterior
+```
+
+```{r, echo=FALSE, eval=FALSE}
+
+#sysdimet[sysdimet$effect_group == 1,]$SUBJECT_ID
+subject_id <- 46
+
+sakkar_id <- match("sakkar", datadesc$Name)
+hhydr_id <- match("hhydr", datadesc$Name)
+
+fsins_blmm <- mebn.get_localfit("fsins")
+posterior <- as.array(fsins_blmm)
+
+sakkar_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",sakkar_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("sakkaroosi") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+hhydr_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",hhydr_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("hiilihydraatti") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+bayesplot_grid(plots = list(sakkar_plot, hhydr_plot), legends = FALSE)
+
+```
 
 
 
