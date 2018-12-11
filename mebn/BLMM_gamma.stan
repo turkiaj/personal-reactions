@@ -45,7 +45,7 @@ parameters {
   vector<lower=0>[k] sigma_b;     // group-level random-effect standard deviations
   vector[k] z[J];                 // unscaled group-level effects
   
-  real<lower=0, upper=1000> v;    // shape parameter of gamma distribution
+  real<lower=0, upper=1000> shape; // shape parameter of gamma distribution
   real<lower=-1,upper=1> ar1;     // autoregressive effect (for order 1)
 }
 
@@ -69,7 +69,7 @@ transformed parameters {
   beta = zbeta .* lambda_tilde * tau;
 
   // variance is related to shape parameter of gamma
-  sigma_e = 1/v;
+  sigma_e = 1/shape;
 
   // Premultiply diagonal matrix [sigma_b] with the Cholesky decomposition L of
   // the correlation matrix Sigma_b to get variance-covariance matrix of group-level effects
@@ -86,9 +86,7 @@ transformed parameters {
 
 model { 
   vector[N] mu;  
-  
-  // Residuals
-  vector[N] e;
+  vector[N] e;    // residuals
   
   // Group variables for AR computation
   int group_size;
@@ -140,11 +138,12 @@ model {
     if (group_size > 1)
       mu[n] += e[n-1] * ar1;
 
-  // Y and mu are vectors, sigma_e is a scalar that is estimated for data
-  // biometric variables are usually lognormal, rather than normally distributed
-  // Log-normal distribution is approximated with Gamma distribution that allow working on the original scale
+    // Biometric variables are usually lognormal, rather than normally distributed
+    // Log-normal distribution is approximated with Gamma distribution that allows
+    // working on the original scale
   
-    Y[n] ~ gamma(v, v / exp(mu[n]));
+    // - using log-link for mu
+    Y[n] ~ gamma(shape, (shape / exp(mu[n])));
   }
 
 }
@@ -153,7 +152,7 @@ generated quantities {
   real beta_Intercept;            // Population-level intercept 
   corr_matrix[k] C; 
   vector[N] Y_rep;                // Repeated response
-  //vector[N] log_lik;              // log-likelihood for LOO
+  vector[N] log_lik;              // log-likelihood for LOO
   vector[k-1] personal_effect[J];
 
   // Correlation matrix of random-effects, C = L'L
@@ -166,10 +165,10 @@ generated quantities {
   for (n in 1:N) 
   {
     // In Bayesian statistics, personal variation is part of mu, not variance
-    Y_rep[n] = gamma_rng(v, v/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]]));
+    Y_rep[n] = gamma_rng(shape, (shape/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]])));
     
     // Compute log-Likelihood for LOO comparison of the models 
-    //log_lik[n] = gamma_lpdf(Y[n] | v, beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]]);
+    log_lik[n] = gamma_lpdf(Y[n] | shape, (shape/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]]));
    }
 
   // Finally, sample personal effects for each nutrient
