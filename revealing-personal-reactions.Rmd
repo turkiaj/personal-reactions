@@ -77,6 +77,18 @@ my.RanefTest <- function(localsummary, PredictorId)
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
 
+```{r shrinkage_parameters, echo=FALSE, message=FALSE}
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
@@ -87,7 +99,7 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
                                    local_model_cache = "models", 
-                                   stan_model_file = "mebn/BLMM_ar1.stan",
+                                   stan_model_file = "mebn/BLMM_gamma.stan",
                                    edge_significance_test = my.RanefTest, 
                                    normalize_values = TRUE, 
                                    reg_params = shrinkage_parameters)
