@@ -40,6 +40,18 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 ```
 
+```{r shrinkage_parameters, echo=FALSE, message=FALSE}
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
 (explain variables)
 
 **Assumptions for local distributions**
@@ -47,15 +59,16 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. BLMM_ar1.stan
 
   - Linear
-  - Response time
   - Multi-response
 
 (This should go to theory part in paper..)
 
-- What kind on process we are modelling?
-  - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
-  - The nutritional reactions form an interconnected system. We propose to model the system with a directed acyclic graph (DAG) while having only the nutrients affecting the blood test values. When this DAG describes a joint probability distribution, it is called a Bayesian Network. The joint propability distribution can furhermore factorized into local distributions with blood tests as responses and nutrients in diet its predictors. 
+**Comparing different local models with LOO**
 
+- Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
+  Log-normal / Gamma
+
+- Response time: AR-structures
 
 **Constructing the graph**
 

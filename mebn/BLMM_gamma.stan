@@ -1,4 +1,3 @@
-
 data { 
   int<lower=0> N;   // number of observations
   int<lower=1> p;   // number of predictors
@@ -140,10 +139,10 @@ model {
 
     // Biometric variables are usually lognormal, rather than normally distributed
     // Log-normal distribution is approximated with Gamma distribution that allows
-    // working on the original scale
+    // working on the original scale when using identity link
   
-    // - using log-link for mu
     Y[n] ~ gamma(shape, (shape / exp(mu[n])));
+    //Y[n] ~ gamma(shape, (shape / mu[n]));
   }
 
 }
@@ -161,6 +160,7 @@ generated quantities {
   beta_Intercept = temp_Intercept - dot_product(means_X, beta);
   
   // Posterior predictive distribution for model checking
+  // - assume identity link
 
   for (n in 1:N) 
   {
@@ -168,7 +168,7 @@ generated quantities {
     Y_rep[n] = gamma_rng(shape, (shape/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]])));
     
     // Compute log-Likelihood for LOO comparison of the models 
-    log_lik[n] = gamma_lpdf(Y[n] | shape, (shape/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]]));
+    log_lik[n] = gamma_lpdf(Y[n] | shape, (shape/exp(beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]])));
    }
 
   // Finally, sample personal effects for each nutrient
