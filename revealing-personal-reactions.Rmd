@@ -65,16 +65,10 @@ The joint probability distribition of Bayesian network can constructed from dist
 
 **Comparing different local models with LOO**
 
-- Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
-  Log-normal / Gamma
-
-- Response time: AR-structures
 
 **Constructing the graph**
 
 When constructing the BN we iterate through all the target nodes (the blood tests) can estimate their local probability distributions given all the nutrients at the patient's diet.
-
-- Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
 
 ```{r, echo=FALSE}
 
@@ -89,6 +83,33 @@ my.RanefTest <- function(localsummary, PredictorId)
 # - initial_graph is iGraph object with only nodes and no edges 
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
+
+We start from a hierarchical model with normal distribution
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+
+sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_normal", 
+                                   stan_model_file = "mebn/BLMM_normal.stan",
+                                   edge_significance_test = my.RanefTest, 
+                                   normalize_values = TRUE, 
+                                   reg_params = shrinkage_parameters)
+```
+
+**Developing the model**
+
+- Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
+  Log-normal / Gamma
+
+- Response time: AR-structures
+
+
+- Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
 
 ```{r shrinkage_parameters, echo=FALSE, message=FALSE}
 shrinkage_parameters <- within(list(),
