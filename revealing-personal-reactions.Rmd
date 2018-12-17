@@ -101,6 +101,47 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    reg_params = shrinkage_parameters)
 ```
 
+**Normal model as reference**
+
+If we now check these initial models of personal blood test responses, we can see that the Gaussian distribution is not a good fit as it allows negative blood test values and does not model the right tail of the true distribution. The estimated model parameters of Gaussian models are still kept as a reference point for further models. Those parameters are the weights of the edges at the Bayesian Network and it is important that all the random variables at the network can work with the same regression coefficients.
+
+```{r normal_model_ppc, echo=FALSE, eval=TRUE}
+library(rstan)
+library(bayesplot)
+library(ggplot2)
+
+theme_set(bayesplot::theme_default())
+
+dens_plots <- list()
+i <- 1
+
+for (targetname in assumedtargets$Name)
+{
+  target_blmm <- mebn.get_localfit(targetname)
+  true_value <- as.vector(sysdimet[,targetname])
+
+  posterior <- extract(target_blmm, pars = c("Y_rep"))
+  posterior_y_50 <- posterior$Y_rep[1:50,]
+  
+  # Back to original scale 
+  post.rep <- mebn.rescale(posterior_y_50, mean(true_value))
+
+  dens_plots[[i]] <- ppc_dens_overlay(true_value, post.rep) + 
+    coord_cartesian(xlim = c(assumedtargets[assumedtargets$Name == targetname,]$ScaleMin,assumedtargets[assumedtargets$Name == targetname,]$ScaleMax)) +
+    ggtitle(targetname)
+  
+  i <- i + 1
+}
+
+bayesplot_grid(plots = dens_plots, legends = FALSE)
+```
+
+TODO: Plot model parameters
+
+```{r normal_model_parameters}
+
+```
+
 **Developing the model**
 
 - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
@@ -132,14 +173,17 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = "models", 
+                                   local_model_cache = "models/BLMM_gamma", 
                                    stan_model_file = "mebn/BLMM_gamma.stan",
                                    edge_significance_test = my.RanefTest, 
                                    normalize_values = TRUE, 
                                    reg_params = shrinkage_parameters)
 ```
 
+
+
 ## Checking the fit of the local models
+
 
 ```{r ppc, echo=FALSE, eval=FALSE}
 library(rstan)
