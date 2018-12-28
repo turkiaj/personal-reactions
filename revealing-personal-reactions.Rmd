@@ -165,7 +165,9 @@ shrinkage_parameters <- within(list(),
 })
 ```
 
+
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
 
 sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -174,16 +176,64 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
                                    local_model_cache = "models/BLMM_gamma", 
-                                   stan_model_file = "mebn/BLMM_gamma.stan",
+                                   stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
                                    edge_significance_test = my.RanefTest, 
                                    normalize_values = TRUE, 
                                    reg_params = shrinkage_parameters)
 ```
 
-
-
 ## Checking the fit of the local models
 
+```{r, echo=FALSE, eval=FALSE}
+
+## Comparing normal and gamma regressions.. absolute parameters should match?
+
+  library(bayesplot)
+  library(rstan)
+
+  fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
+  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
+
+  fshdl.true <- sysdimet$fshdl
+
+  posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
+  posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept", "g_alpha", "g_beta"))
+  
+  mean(posterior_n$beta_Intercept)
+  mean(posterior_g$beta_Intercept)
+  
+  mean(posterior_n$beta[2])
+  gb<-mean(posterior_g$g_beta)
+
+  ga<-mean(posterior_g$g_alpha)
+  
+  (gb^2)/ga
+  
+  log(1/ga+1)
+  
+  print(fshdl_norm, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fshdl_gamma, pars=c("beta_Intercept", "beta"))
+  
+  posterior_n_50 <- posterior_n$Y_rep[1:50,]
+  posterior_g_50 <- posterior_g$Y_rep[1:50,]
+  
+  # Back to original scale 
+  #fshdl.nrep <- mebn.rescale(posterior_n_50, mean(fshdl.true))
+  #fshdl.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  
+  ppc_dens_overlay(fshdl.true, posterior_n_50) + 
+   coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin normaali-jakauma")
+  
+#  ppc_dens_overlay(fshdl.true, fshdl.grep) + 
+#  coord_cartesian(xlim = c(0,10.0)) +
+#  ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fshdl.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+  
+```
 
 ```{r ppc, echo=FALSE, eval=FALSE}
 library(rstan)

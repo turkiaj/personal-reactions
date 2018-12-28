@@ -184,8 +184,9 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
     X <- cbind(rep(1,N), X)
     
     #Y <- scale(inputdata[target_name][,], center = FALSE, scale = TRUE)[,1]
-    Y <- mebn.scale(inputdata[target_name], sd(inputdata[target_name][,]))[,]  
+    #Y <- mebn.scale(inputdata[target_name], sd(inputdata[target_name][,]))[,]  
     #Y <- mebn.normalize(inputdata[target_name], min(inputdata[target_name][,]), max(inputdata[target_name][,]))[,]  
+    Y <- inputdata[target_name][,]
   }
   else
   {
@@ -479,7 +480,7 @@ mebn.sampling <- function(inputdata, predictor_columns, target_column, group_col
   {
     stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
     
-    localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=list(list(temp_Intercept=1),list(temp_Intercept=1),list(temp_Intercept=1),list(temp_Intercept=1)), control = list(adapt_delta = 0.95, max_treedepth = 15))
+    localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=list(list(temp_Intercept=100),list(temp_Intercept=100),list(temp_Intercept=100),list(temp_Intercept=100)), control = list(adapt_delta = 0.95, max_treedepth = 15))
     
     modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
     saveRDS(localfit, file=modelcache)
@@ -506,13 +507,10 @@ mebn.variational_inference <- function(inputdata, predictor_columns, target_colu
   if (is.null(localfit))
   {
     stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
-
-    print(stanDat)
-        
     localmodel <- stan_model(file = stan_mode_file)
-    localfit <- vb(localmodel, data=stanDat, output_samples=2500, iter=10000, seed=123)
+    localfit <- vb(localmodel, data=stanDat, output_samples=2500, iter=10000, init=list(list("temp_Intercept"=10),list("temp_Intercept"=10),list("temp_Intercept"=10),list("temp_Intercept"=10)), seed=123)
     
-    modelcache <- paste0(local_model_cache, "\\", target_name, "_blmm", ".rds")
+    modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
     saveRDS(localfit, file=modelcache)
   }
   
