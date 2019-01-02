@@ -37,7 +37,6 @@ sysdimet <- read.csv(file="data/SYSDIMET_diet.csv", sep=";", dec=",")
 # Define how to iterate through the graph
 assumedpredictors <- datadesc[datadesc$Order==100,]    
 assumedtargets <- datadesc[datadesc$Order==200,] 
-
 ```
 
 ```{r shrinkage_parameters, echo=FALSE, message=FALSE}
@@ -169,6 +168,8 @@ shrinkage_parameters <- within(list(),
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 
+assumedtargets <- datadesc[datadesc$Name=="fshdl",] 
+
 sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
@@ -182,6 +183,27 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    reg_params = shrinkage_parameters)
 ```
 
+Log-normal distribution might be easier to sample, if we can get the regression coefficients to absolute and additive scale
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+
+assumedtargets <- datadesc[datadesc$Name=="fsins",] 
+
+sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_lognormal", 
+                                   stan_model_file = "mebn/BLMM_lognormal.stan",
+                                   edge_significance_test = my.RanefTest, 
+                                   normalize_values = TRUE, 
+                                   reg_params = shrinkage_parameters)
+```
+
+
 ## Checking the fit of the local models
 
 ```{r, echo=FALSE, eval=FALSE}
@@ -193,33 +215,37 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
 
   fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
   fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
+  fsins_gamma <- mebn.get_localfit("BLMM_gamma/fsins")
+  fsins_ln <- mebn.get_localfit("BLMM_lognormal/fsins")
+
+  fpgluk_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fpgluk")
 
   fshdl.true <- sysdimet$fshdl
+  fsins.true <- sysdimet$fsins
+  fpgluk.true <- sysdimet$fpgluk
 
   posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
-  posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept", "g_alpha", "g_beta"))
+  posterior_g <- extract(fsins_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_g <- extract(fpgluk_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_ln <- extract(fsins_ln, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
   
   mean(posterior_n$beta_Intercept)
   mean(posterior_g$beta_Intercept)
   
   mean(posterior_n$beta[2])
-  gb<-mean(posterior_g$g_beta)
-
-  ga<-mean(posterior_g$g_alpha)
-  
-  (gb^2)/ga
-  
-  log(1/ga+1)
   
   print(fshdl_norm, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
-  print(fshdl_gamma, pars=c("beta_Intercept", "beta"))
-  
+  print(fsins_ln, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fsins_gamma, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+
   posterior_n_50 <- posterior_n$Y_rep[1:50,]
+  posterior_ln_50 <- posterior_ln$Y_rep[1:50,]
   posterior_g_50 <- posterior_g$Y_rep[1:50,]
   
   # Back to original scale 
   #fshdl.nrep <- mebn.rescale(posterior_n_50, mean(fshdl.true))
   #fshdl.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  fsins.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
   
   ppc_dens_overlay(fshdl.true, posterior_n_50) + 
    coord_cartesian(xlim = c(0,10.0)) +
@@ -232,6 +258,18 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
   ppc_dens_overlay(fshdl.true, posterior_g_50) + 
     coord_cartesian(xlim = c(0,10.0)) +
     ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,30.0)) +
+    ggtitle("Veren insuliinin gamma-jakauma")
+
+  ppc_dens_overlay(fpgluk.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren glukoosin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_ln_50) + 
+    coord_cartesian(xlim = c(0,50.0)) +
+    ggtitle("Veren insuliinin lognormal-jakauma")
   
 ```
 

@@ -203,9 +203,10 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
                      X_prior_sigma <- prior_sigma    # no prior for the intercept 
                      X_prior_mean <- prior_mean      # sigma < 0 means noninformative prior
                      Y <- Y
-                     Z <- X                          # Is this ok? 
+                     Z <- X                      
                      J <- length(levels(inputdata[[group_column]]))
                      group <- as.integer(inputdata[[group_column]])
+                     offset <- 15
                    })
   
   params <- c(params, reg_params)
@@ -221,6 +222,7 @@ mebn.localsummary <- function(fit)
   
   fixef_CI <- apply(draws$beta, 2, quantile, probs = c(0.05, 0.95)) # 2 = by column
   sigma_e <- mean(draws$sigma_e)
+  
 
   ModelSummary <- within(list(),
                          {
@@ -479,10 +481,12 @@ mebn.sampling <- function(inputdata, predictor_columns, target_column, group_col
   if (is.null(localfit))
   {
     stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
-    
-    localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=list(list(temp_Intercept=100),list(temp_Intercept=100),list(temp_Intercept=100),list(temp_Intercept=100)), control = list(adapt_delta = 0.95, max_treedepth = 15))
+
+    initlist <- list(list(beta_Intercept=50),list(beta_Intercept=2),list(beta_Intercept=2),list(beta_Intercept=2))    
+    localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=0, control = list(adapt_delta = 0.85, max_treedepth = 15))
     
     modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
+    
     saveRDS(localfit, file=modelcache)
   }
   
@@ -508,7 +512,7 @@ mebn.variational_inference <- function(inputdata, predictor_columns, target_colu
   {
     stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
     localmodel <- stan_model(file = stan_mode_file)
-    localfit <- vb(localmodel, data=stanDat, output_samples=2500, iter=10000, init=list(list("temp_Intercept"=10),list("temp_Intercept"=10),list("temp_Intercept"=10),list("temp_Intercept"=10)), seed=123)
+    localfit <- vb(localmodel, data=stanDat, output_samples=2500, iter=10000)
     
     modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
     saveRDS(localfit, file=modelcache)
