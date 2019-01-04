@@ -21,8 +21,8 @@ foolih;folic acid (vitamin B9);100;;;;;;Gaussian
 cvit;vitamin C;100;;;;;;Gaussian
 epa;EPA-fatty acid;100;;;;;;Gaussian
 dha;DHA-fatty acid;100;;;;;;Gaussian
-fshdl;HDL-cholesterol;200;;;0;10;unit;Gaussian
-fsldl;LDL-cholesterol;200;;;0;10;unit;Gaussian
+fshdl;HDL-cholesterol;200;;;0;7.5;unit;Gaussian
+fsldl;LDL-cholesterol;200;;;0;7.5;unit;Gaussian
 fsins;blood insulin;200;;;0;45;unit;Gaussian
 fskol;blood cholesterol;200;;;0;10;unit;Gaussian
-fpgluk;blood glucose;200;;;0;45;unit;Gaussian
+fpgluk;blood glucose;200;;;0;20;unit;Gaussian

@@ -101,11 +101,10 @@ model {
 }
 
 generated quantities { 
-  //real beta_Intercept;            // population-level intercept 
+  //real beta_Intercept;          // population-level intercept 
   corr_matrix[k] C;               // correlation matrix 
   vector[N] Y_rep;                // repeated response
   vector[N] log_lik;              // log-likelihood for LOO
-  //vector[k-1] personal_effect[J];
   real mu_hat;
   real g_beta_hat;
 
@@ -128,11 +127,4 @@ generated quantities {
     // Compute log-Likelihood for later LOO comparison of the models 
     log_lik[n] = gamma_lpdf(Y[n] | g_alpha, g_beta_hat);
   }
-
-  // Finally, sample personal effects for each nutrient
-  //for (j in 1:J) 
-  //{
-    // beta vector does not include intercept, b is also sliced not to include it
-    //personal_effect[j] = beta + b[j][2:k];
-  //}
 } 

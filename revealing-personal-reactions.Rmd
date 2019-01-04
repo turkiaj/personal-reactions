@@ -39,43 +39,11 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
-```{r shrinkage_parameters, echo=FALSE, message=FALSE}
-shrinkage_parameters <- within(list(),
-{
-    scale_icept  <- 1         # prior std for the intercept
-    scale_global <- 0.01825   # scale for the half-t prior for tau: 
-                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
-    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
-    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
-    slab_scale   <- 1         # slab scale for the regularized horseshoe
-    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
-})
-```
 (explain variables)
 
-**Assumptions for local distributions**
+**Nutritional effects as Bayesian Network**
 
-The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. BLMM_ar1.stan
-
-  - Linear
-  - Multi-response
-
-(This should go to theory part in paper..)
-
-**Comparing different local models with LOO**
-
-
-**Constructing the graph**
-
-When constructing the BN we iterate through all the target nodes (the blood tests) can estimate their local probability distributions given all the nutrients at the patient's diet.
-
-```{r, echo=FALSE}
-
-my.RanefTest <- function(localsummary, PredictorId)
-{
-  abs(localsummary$fixef[PredictorId]) > 0.001 || localsummary$ranef_sd[PredictorId] > 0.001
-}
-```
+Nutrients and their bodily responses are considered as random variables at the graph
 
 ```{r, echo=FALSE, message=FALSE}
 # Add data columns describing random variables as nodes to the graph
@@ -83,7 +51,15 @@ my.RanefTest <- function(localsummary, PredictorId)
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
 
-We start from a hierarchical model with normal distribution
+**Assumptions for local distributions**
+
+The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. 
+
+**Constructing the graph**
+
+Edges of the graph are absolute effects of nutrients.
+
+We start from a hierarchical model with normal distribution that estimates of absolute effects are considered as reference when developing the model.
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
@@ -95,9 +71,8 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    local_estimation = mebn.sampling,
                                    local_model_cache = "models/BLMM_normal", 
                                    stan_model_file = "mebn/BLMM_normal.stan",
-                                   edge_significance_test = my.RanefTest, 
-                                   normalize_values = TRUE, 
-                                   reg_params = shrinkage_parameters)
+                                   normalize_values = TRUE)
+
 ```
 
 **Normal model as reference**
@@ -105,34 +80,7 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
 If we now check these initial models of personal blood test responses, we can see that the Gaussian distribution is not a good fit as it allows negative blood test values and does not model the right tail of the true distribution. The estimated model parameters of Gaussian models are still kept as a reference point for further models. Those parameters are the weights of the edges at the Bayesian Network and it is important that all the random variables at the network can work with the same regression coefficients.
 
 ```{r normal_model_ppc, echo=FALSE, eval=TRUE}
-library(rstan)
-library(bayesplot)
-library(ggplot2)
-
-theme_set(bayesplot::theme_default())
-
-dens_plots <- list()
-i <- 1
-
-for (targetname in assumedtargets$Name)
-{
-  target_blmm <- mebn.get_localfit(targetname)
-  true_value <- as.vector(sysdimet[,targetname])
-
-  posterior <- extract(target_blmm, pars = c("Y_rep"))
-  posterior_y_50 <- posterior$Y_rep[1:50,]
-  
-  # Back to original scale 
-  post.rep <- mebn.rescale(posterior_y_50, mean(true_value))
-
-  dens_plots[[i]] <- ppc_dens_overlay(true_value, post.rep) + 
-    coord_cartesian(xlim = c(assumedtargets[assumedtargets$Name == targetname,]$ScaleMin,assumedtargets[assumedtargets$Name == targetname,]$ScaleMax)) +
-    ggtitle(targetname)
-  
-  i <- i + 1
-}
-
-bayesplot_grid(plots = dens_plots, legends = FALSE)
+mebn.target_dens_overlays("BLMM_normal/")
 ```
 
 TODO: Plot model parameters
@@ -146,10 +94,51 @@ TODO: Plot model parameters
 - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
   Log-normal / Gamma
 
-- Response time: AR-structures
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+
+sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
+                                   stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
+                                   edge_significance_test = my.RanefTest, 
+                                   normalize_values = TRUE, 
+                                   reg_params = shrinkage_parameters)
+```
+
+## Checking the fit of the local models
+
+```{r gamma_ppc, echo=FALSE, eval=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/")
+```
+
+**Comparing different local models with LOO**
+
+Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models.
+
+
+##Varying response time: AR-structures##
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+
+sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
+                                   stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
+                                   edge_significance_test = my.RanefTest, 
+                                   normalize_values = TRUE)
+```
 
 
 - Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
+
 
 ```{r shrinkage_parameters, echo=FALSE, message=FALSE}
 shrinkage_parameters <- within(list(),
@@ -164,11 +153,7 @@ shrinkage_parameters <- within(list(),
 })
 ```
 
-
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-source("mebn/MEBN.r")
-
-assumedtargets <- datadesc[datadesc$Name=="fshdl",] 
 
 sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -176,102 +161,63 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_gamma", 
+                                   local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
                                    stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
-                                   edge_significance_test = my.RanefTest, 
-                                   normalize_values = TRUE, 
-                                   reg_params = shrinkage_parameters)
-```
-
-Log-normal distribution might be easier to sample, if we can get the regression coefficients to absolute and additive scale
-
-```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-source("mebn/MEBN.r")
-
-assumedtargets <- datadesc[datadesc$Name=="fsins",] 
-
-sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
-                                   inputdata = sysdimet,
-                                   predictor_columns = assumedpredictors, 
-                                   assumed_targets = assumedtargets, 
-                                   group_column = "SUBJECT_ID",
-                                   local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_lognormal", 
-                                   stan_model_file = "mebn/BLMM_lognormal.stan",
-                                   edge_significance_test = my.RanefTest, 
                                    normalize_values = TRUE, 
                                    reg_params = shrinkage_parameters)
 ```
 
 
-## Checking the fit of the local models
+## Pruning the graph
 
-```{r, echo=FALSE, eval=FALSE}
+- Remove the insignicant components: more informative graph and multiresponse
+- TODO: use projpred to remove edges
 
-## Comparing normal and gamma regressions.. absolute parameters should match?
 
-  library(bayesplot)
-  library(rstan)
+### Principal components as graph visualiation
 
-  fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
-  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
-  fsins_gamma <- mebn.get_localfit("BLMM_gamma/fsins")
-  fsins_ln <- mebn.get_localfit("BLMM_lognormal/fsins")
+After finding a reasonable fit, we can analyze the principal components that explain the variation.
 
-  fpgluk_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fpgluk")
+```{r, echo=TRUE, message=TRUE}
+sysdimet_visgraph <- mebn.visualization_graph(sysdimet_graph)
 
-  fshdl.true <- sysdimet$fshdl
-  fsins.true <- sysdimet$fsins
-  fpgluk.true <- sysdimet$fpgluk
+# Filter only the most significant edges having large typical effect or large personal variance
+alledges <- E(sysdimet_visgraph)
+top_neg_edges <- head(alledges[order(alledges$weight)], 15)
+top_pos_edges <- head(alledges[order(-alledges$weight)], 15)
+top_pers_edges <- head(alledges[order(-alledges$b_sigma)], 15)
 
-  posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
-  posterior_g <- extract(fsins_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
-  posterior_g <- extract(fpgluk_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
-  posterior_ln <- extract(fsins_ln, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
-  
-  mean(posterior_n$beta_Intercept)
-  mean(posterior_g$beta_Intercept)
-  
-  mean(posterior_n$beta[2])
-  
-  print(fshdl_norm, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
-  print(fsins_ln, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
-  print(fsins_gamma, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+# Comment out this row to see all the connections at the model
+sysdimet_visgraph <- delete.edges(sysdimet_visgraph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
 
-  posterior_n_50 <- posterior_n$Y_rep[1:50,]
-  posterior_ln_50 <- posterior_ln$Y_rep[1:50,]
-  posterior_g_50 <- posterior_g$Y_rep[1:50,]
-  
-  # Back to original scale 
-  #fshdl.nrep <- mebn.rescale(posterior_n_50, mean(fshdl.true))
-  #fshdl.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
-  fsins.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
-  
-  ppc_dens_overlay(fshdl.true, posterior_n_50) + 
-   coord_cartesian(xlim = c(0,10.0)) +
-    ggtitle("Veren HDL-kolestrolin normaali-jakauma")
-  
-#  ppc_dens_overlay(fshdl.true, fshdl.grep) + 
-#  coord_cartesian(xlim = c(0,10.0)) +
-#  ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+# Write the MEBN in GEXF format for visualization
+mebn.write_gexf(sysdimet_visgraph, "sysdimet.gexf")
 
-  ppc_dens_overlay(fshdl.true, posterior_g_50) + 
-    coord_cartesian(xlim = c(0,10.0)) +
-    ggtitle("Veren HDL-kolestrolin gamma-jakauma")
-
-  ppc_dens_overlay(fsins.true, posterior_g_50) + 
-    coord_cartesian(xlim = c(0,30.0)) +
-    ggtitle("Veren insuliinin gamma-jakauma")
-
-  ppc_dens_overlay(fpgluk.true, posterior_g_50) + 
-    coord_cartesian(xlim = c(0,10.0)) +
-    ggtitle("Veren glukoosin gamma-jakauma")
-
-  ppc_dens_overlay(fsins.true, posterior_ln_50) + 
-    coord_cartesian(xlim = c(0,50.0)) +
-    ggtitle("Veren insuliinin lognormal-jakauma")
-  
+# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
+gexf_file <- file("sysdimet.gexf") 
+graph_string <- paste(readLines(gexf_file), collapse = "")
 ```
+
+<script>
+  var sysdimet_graph = '`r graph_string`';
+</script>
+
+<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
+<div id="sigmacontainer"></div>
+
+```{r, echo=FALSE, message=FALSE}
+# Load the graph drawing JavaScript
+htmltools::includeHTML("population_graph.htm")
+```
+</br>
+
+## Inference
+
+Rest of the notebook consideres the inference that we can do with previously estimated mixed-effect bayesian network.
+
+First we do exploration over the whole sample population for finding clusters of similarly behaving patients. Then in the last part we show how we can predict personal nutritional effects for individual patients.
+
+TODO: tämän läpikäynnin voisi tehdä verkon rakennuksen yhteydessä
 
 ```{r ppc, echo=FALSE, eval=FALSE}
 library(rstan)
@@ -325,90 +271,6 @@ for (targetname in assumedtargets$Name)
 
 bayesplot_grid(plots = dens_plots, legends = FALSE)
 ```
-
-## Principal components
-
-After finding a reasonable fit, we can analyze the principal components that explain the variation.
-
-## Pruning the graph
-
-- Remove the insignicant components: more informative graph and multiresponse
-
-## Inference
-
-- Personal graph
-- Clusters of similar reactions types
-
-### Verkkokuvaaja 
-Tämä kuvaaja kokoaa yhteen tyypilliset reagointitavat, jossa punainen viiva kuvaa nostavaa ja sininen laskevaa vaikutusta. Harmaa
-
-```{r, echo=TRUE, message=TRUE}
-sysdimet_visgraph <- mebn.visualization_graph(sysdimet_graph)
-
-# Filter only the most significant edges having large typical effect or large personal variance
-alledges <- E(sysdimet_visgraph)
-top_neg_edges <- head(alledges[order(alledges$weight)], 15)
-top_pos_edges <- head(alledges[order(-alledges$weight)], 15)
-top_pers_edges <- head(alledges[order(-alledges$b_sigma)], 15)
-
-# Comment out this row to see all the connections at the model
-sysdimet_visgraph <- delete.edges(sysdimet_visgraph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
-
-# Write the MEBN in GEXF format for visualization
-mebn.write_gexf(sysdimet_visgraph, "sysdimet.gexf")
-
-# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
-gexf_file <- file("sysdimet.gexf") 
-graph_string <- paste(readLines(gexf_file), collapse = "")
-```
-
-<script>
-  var sysdimet_graph = '`r graph_string`';
-</script>
-
-<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
-<div id="sigmacontainer"></div>
-
-```{r, echo=FALSE, message=FALSE}
-# Load the graph drawing JavaScript
-htmltools::includeHTML("population_graph.htm")
-```
-</br>
-
-### Henkilökohtainen verkko 
-
-```{r, echo=TRUE, message=TRUE}
-library(rstan)
-source("mebn/MEBN.r")
-
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-
-p37_graph <- mebn.personal_graph(reaction_graph = initial_graph, 
-                                   person_id = 37,
-                                   predictor_columns = assumedpredictors, 
-                                   assumed_targets = assumedtargets)
-
-# Write the MEBN in GEXF format for visualization
-mebn.write_gexf(p37_graph, "p37.gexf")
-
-# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
-gexf_file <- file("p37.gexf") 
-graph_string <- paste(readLines(gexf_file), collapse = "")
-```
-
-<script>
-  var sysdimet_graph = '`r graph_string`';
-</script>
-
-<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
-<div id="sigmacontainer"></div>
-
-```{r, echo=FALSE, message=FALSE}
-# Load the graph drawing JavaScript
-htmltools::includeHTML("population_graph.htm")
-```
-</br>
-
 
 
 
@@ -561,6 +423,49 @@ ggplot(plot_data, aes(x=effect, y=amount)) +
   facet_wrap(~cluster)
 ```
 
+
+### Personal prediction
+
+Finally, we can hold out a set of data for group of patients and test the predictive ability of the model. Let's calculate the model with a training set and do predictions for this separate test set.
+
+### Personal graph
+
+Similar to the population level graph, we can now predict a personal graphs that indicate how nutrients affect their blood values.
+
+```{r, echo=TRUE, message=TRUE}
+library(rstan)
+source("mebn/MEBN.r")
+
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+
+p37_graph <- mebn.personal_graph(reaction_graph = initial_graph, 
+                                   person_id = 37,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets)
+
+# Write the MEBN in GEXF format for visualization
+mebn.write_gexf(p37_graph, "p37.gexf")
+
+# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
+gexf_file <- file("p37.gexf") 
+graph_string <- paste(readLines(gexf_file), collapse = "")
+```
+
+<script>
+  var sysdimet_graph = '`r graph_string`';
+</script>
+
+<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
+<div id="sigmacontainer"></div>
+
+```{r, echo=FALSE, message=FALSE}
+# Load the graph drawing JavaScript
+htmltools::includeHTML("population_graph.htm")
+```
+</br>
+
+
+
 ### Henkilökohtaisten ennusteiden varmuus
 
 Kaikkien estimoitujen henkilökohtaisten vaikutusten 95%-luottamusvälit sisältävät nollan. Tässä on kuitenkin esimerkkejä voimakkaimmista. Valitaan joku potilas edellä löydetystä ryhmästä 1 eli keskimäärin voimakkaammin insuliinilla reagoivista.
@@ -607,6 +512,74 @@ bayesplot_grid(plots = list(sakkar_plot, hhydr_plot), legends = FALSE)
 
 ```
 
+Temporal material.. remove
 
+
+```{r, echo=FALSE, eval=FALSE}
+
+## Comparing normal and gamma regressions.. absolute parameters should match?
+
+  library(bayesplot)
+  library(rstan)
+
+  fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
+  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
+  fsins_gamma <- mebn.get_localfit("BLMM_gamma/fsins")
+  fsins_ln <- mebn.get_localfit("BLMM_lognormal/fsins")
+
+  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fshdl")
+
+  fshdl.true <- sysdimet$fshdl
+  fsins.true <- sysdimet$fsins
+  fpgluk.true <- sysdimet$fpgluk
+
+  posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
+  posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_g <- extract(fpgluk_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_ln <- extract(fsins_ln, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
+  
+  mean(posterior_n$beta_Intercept)
+  mean(posterior_g$beta_Intercept)
+  
+  mean(posterior_n$beta[2])
+  
+  print(fshdl_norm, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fsins_ln, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fsins_gamma, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+
+  posterior_n_50 <- posterior_n$Y_rep[1:50,]
+  posterior_ln_50 <- posterior_ln$Y_rep[1:50,]
+  posterior_g_50 <- posterior_g$Y_rep[1:50,]
+  
+  # Back to original scale 
+  #fshdl.nrep <- mebn.rescale(posterior_n_50, mean(fshdl.true))
+  #fshdl.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  fsins.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  
+  ppc_dens_overlay(fshdl.true, posterior_n_50) + 
+   coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin normaali-jakauma")
+  
+#  ppc_dens_overlay(fshdl.true, fshdl.grep) + 
+#  coord_cartesian(xlim = c(0,10.0)) +
+#  ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fshdl.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,30.0)) +
+    ggtitle("Veren insuliinin gamma-jakauma")
+
+  ppc_dens_overlay(fpgluk.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren glukoosin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_ln_50) + 
+    coord_cartesian(xlim = c(0,50.0)) +
+    ggtitle("Veren insuliinin lognormal-jakauma")
+  
+```
 
 
