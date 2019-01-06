@@ -24,18 +24,19 @@ transformed data {
   for (i in 2:p) { 
      means_X[i - 1] = mean(X[, i]); 
      Xc[, i - 1] = X[, i] - means_X[i - 1]; 
-     //Xc[, i - 1] = X[, i]; 
      Xp[, i - 1] = X[, i];
   }
 }
 
 parameters { 
-  real beta_Intercept;            // temporary intercept 
+  real temp_Intercept;            // temporary intercept 
   vector[Pc] beta;                // poulation-level effects (fixed effects)
   cholesky_factor_corr[k] L;      // Cholesky factor of group ranef corr matrix
   vector<lower=0>[k] sigma_b;     // group-level random-effect standard deviations
   vector[k] z[J];                 // unscaled group-level effects
   real<lower=0> g_log_alpha;      // alpha (shape) parameter of the gamma distribution
+
+  real ar1;                       // AR(1) coefficient
 }
 
 transformed parameters {
@@ -49,8 +50,8 @@ transformed parameters {
   vector[N] e;                    // residuals
   
   // Group variables for AR computation
-  int group_size;
-  int current_group;
+  real group_size;
+  real current_group;
 
   // Premultiply diagonal matrix [sigma_b] with the Cholesky decomposition L of
   // the correlation matrix Sigma_b to get variance-covariance matrix of group-level effects
@@ -65,7 +66,7 @@ transformed parameters {
     b[j] = Sigma_b * z[j];    
     
   // - mean, or typical correlation
-  mu = offset + beta_Intercept + Xc * beta;
+  mu = offset + temp_Intercept + Xp * beta;
   
   // - log transform alpha parameter to keep it positive
   g_alpha = g_log_alpha;
@@ -123,7 +124,7 @@ model {
 }
 
 generated quantities { 
-  //real beta_Intercept;            // population-level intercept 
+  real beta_Intercept;            // population-level intercept 
   corr_matrix[k] C;               // correlation matrix 
   vector[N] Y_rep;                // repeated response
   vector[N] log_lik;              // log-likelihood for LOO
@@ -134,14 +135,14 @@ generated quantities {
   C = multiply_lower_tri_self_transpose(L); 
   
   //beta_Intercept = temp_Intercept - dot_product(means_X, beta) - offset;
+  beta_Intercept = temp_Intercept + offset;
 
   // Posterior predictive distribution for model checking
 
   for (n in 1:N) 
   {
-    mu_hat = offset + beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
-    //mu_hat = beta_Intercept + Xc[n] * beta;
-    
+    mu_hat = beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
+
     g_beta_hat = g_alpha / mu_hat;
     
     Y_rep[n] = gamma_rng(g_alpha, g_beta_hat);

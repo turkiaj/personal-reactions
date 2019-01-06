@@ -38,7 +38,7 @@ transformed data {
 }
 
 parameters { 
-  real beta_Intercept;            // temporary intercept 
+  real temp_Intercept;            // temporary intercept 
   vector[Pc] beta;                // poulation-level effects (fixed effects)
   cholesky_factor_corr[k] L;      // Cholesky factor of group ranef corr matrix
   vector<lower=0>[k] sigma_b;     // group-level random-effect standard deviations
@@ -88,7 +88,7 @@ transformed parameters {
     b[j] = Sigma_b * z[j];    
     
   // - mean, or typical correlation
-  mu = offset + beta_Intercept + Xc * beta;
+  mu = offset + temp_Intercept + Xc * beta;
   
   // - log transform alpha parameter to keep it positive
   g_alpha = g_log_alpha;
@@ -147,7 +147,7 @@ model {
 }
 
 generated quantities { 
-  //real beta_Intercept;            // population-level intercept 
+  real beta_Intercept;            // population-level intercept 
   corr_matrix[k] C;               // correlation matrix 
   vector[N] Y_rep;                // repeated response
   vector[N] log_lik;              // log-likelihood for LOO
@@ -159,13 +159,13 @@ generated quantities {
   C = multiply_lower_tri_self_transpose(L); 
   
   //beta_Intercept = temp_Intercept - dot_product(means_X, beta) - offset;
-
+ beta_Intercept = temp_Intercept + offset;
+ 
   // Posterior predictive distribution for model checking
 
   for (n in 1:N) 
   {
-    mu_hat = offset + beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
-    //mu_hat = beta_Intercept + Xc[n] * beta;
+    mu_hat = beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
     
     g_beta_hat = g_alpha / mu_hat;
     

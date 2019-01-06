@@ -45,12 +45,6 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 Nutrients and their bodily responses are considered as random variables at the graph
 
-```{r, echo=FALSE, message=FALSE}
-# Add data columns describing random variables as nodes to the graph
-# - initial_graph is iGraph object with only nodes and no edges 
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-```
-
 **Assumptions for local distributions**
 
 The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. 
@@ -62,16 +56,17 @@ Edges of the graph are absolute effects of nutrients.
 We start from a hierarchical model with normal distribution that estimates of absolute effects are considered as reference when developing the model.
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+initial_normal_graph <- mebn.new_graph_with_randomvariables(datadesc)
 
-sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
-                                   inputdata = sysdimet,
-                                   predictor_columns = assumedpredictors, 
-                                   assumed_targets = assumedtargets, 
-                                   group_column = "SUBJECT_ID",
-                                   local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_normal", 
-                                   stan_model_file = "mebn/BLMM_normal.stan",
-                                   normalize_values = TRUE)
+sysdimet_normal <- mebn.graphical_model(reaction_graph = initial_normal_graph, 
+                                         inputdata = sysdimet,
+                                         predictor_columns = assumedpredictors, 
+                                         assumed_targets = assumedtargets, 
+                                         group_column = "SUBJECT_ID",
+                                         local_estimation = mebn.sampling,
+                                         local_model_cache = "models/BLMM_normal", 
+                                         stan_model_file = "mebn/BLMM_normal.stan",
+                                         normalize_values = TRUE)
 
 ```
 
@@ -83,20 +78,15 @@ If we now check these initial models of personal blood test responses, we can se
 mebn.target_dens_overlays("BLMM_normal/")
 ```
 
-TODO: Plot model parameters
-
-```{r normal_model_parameters}
-
-```
-
 **Developing the model**
 
 - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
   Log-normal / Gamma
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+initial_gamma_graph <- mebn.new_graph_with_randomvariables(datadesc)
 
-sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+sysdimet_gamma <- mebn.graphical_model(reaction_graph = initial_gamma_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
@@ -104,9 +94,14 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    local_estimation = mebn.sampling,
                                    local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
                                    stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
-                                   edge_significance_test = my.RanefTest, 
-                                   normalize_values = TRUE, 
-                                   reg_params = shrinkage_parameters)
+                                   normalize_values = TRUE)
+```
+
+
+```{r}
+#library("shinystan")
+#gamma1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+#launch_shinystan(gamma1)
 ```
 
 ## Checking the fit of the local models
@@ -115,24 +110,99 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
 mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/")
 ```
 
+```{r effect_comparison}
+
+# - find beta nodes of both normal and gamma distributions 
+normal_nodes <- V(sysdimet_normal)
+n_beta <- normal_nodes[normal_nodes$type=="beta"]
+
+gamma_nodes <- V(sysdimet_gamma)
+g_beta <- gamma_nodes[gamma_nodes$type=="beta"]
+
+# - construct a table for comparing the estimates
+typical_effects<-data.frame(matrix(NA, nrow=length(n_beta), ncol=0))
+
+typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", n_beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+
+typical_effects$normal_estimate <- round(n_beta$value,6)
+typical_effects$gamma_estimate <- round(g_beta$value,6)
+
+# we see that typical effects are exactly the same in absolute scale
+typical_effects
+
+```
+
+
+
+```{r, echo=FALSE, eval=FALSE}
+library(bayesplot)
+
+fpgluk_normal <- mebn.get_localfit("BLMM_normal/fpgluk")
+fpgluk_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fpgluk")
+
+fsins_gamma_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+
+normal_plot <- plot(fpgluk_normal)
+gamma_plot <- plot(fpgluk_gamma)
+
+bayesplot_grid(plots = list(normal_plot, gamma_plot), legends = FALSE)
+
+```
+
+```{r}
+# Compare intercepts
+
+posterior_n <- extract(fpgluk_normal, pars = c("beta_Intercept", "beta", "sigma_e"))
+posterior_g <- extract(fsins_gamma_ar1, pars = c("beta_Intercept", "beta", "sigma_e"))
+
+#mean(posterior_n$beta_Intercept) # 12
+mean(posterior_g$beta_Intercept) # -9
+
+#colMeans(posterior_n$beta)
+#colMeans(posterior_g$beta)
+
+
+```
+
+
 **Comparing different local models with LOO**
 
 Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models.
 
+```{r}
+library(loo)
+
+fpgluk_normal_loglik <- extract_log_lik(fpgluk_normal, merge_chains = FALSE)
+fpgluk_normal_rel_n_eff <- relative_eff(exp(fpgluk_normal_loglik))
+fpgluk_normal_loo <- loo(fsins_normal_loglik, r_eff = fpgluk_normal_rel_n_eff, cores = 4)
+
+print(fpgluk_normal_loo)
+
+fpgluk_gamma_loglik <- extract_log_lik(fpgluk_gamma, merge_chains = FALSE)
+fpgluk_gamma_rel_n_eff <- relative_eff(exp(fpgluk_gamma_loglik))
+fpgluk_gamma_loo <- loo(fpgluk_gamma_loglik, r_eff = fpgluk_gamma_rel_n_eff, cores = 4)
+
+print(fpgluk_gamma_loo)
+
+# "The difference will be positive if the expected predictive accuracy for the second model is higher."
+print(compare(fpgluk_normal_loo, fpgluk_gamma_loo), digits = 3)
+
+```
+
+As the expected log predictive density (ELPD) of gamma model is higher, we should choose that for further development.
 
 ##Varying response time: AR-structures##
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
-sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph, 
+sysdimet_graph <- mebn.graphical_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
-                                   stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
-                                   edge_significance_test = my.RanefTest, 
+                                   local_model_cache = "models/BLMM_gamma/ar1", 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1.stan",
                                    normalize_values = TRUE)
 ```
 
@@ -161,8 +231,8 @@ sysdimet_graph <- mebn.typical_graph(reaction_graph = initial_graph,
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_gamma/hierarchical_idlink", 
-                                   stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
+                                   local_model_cache = "models/BLMM_gamma/ar1_rhs", 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs.stan",
                                    normalize_values = TRUE, 
                                    reg_params = shrinkage_parameters)
 ```
@@ -524,7 +594,7 @@ Temporal material.. remove
 
   fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
   fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
-  fsins_gamma <- mebn.get_localfit("BLMM_gamma/fsins")
+  fsins_gamma <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
   fsins_ln <- mebn.get_localfit("BLMM_lognormal/fsins")
 
   fshdl_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fshdl")
@@ -535,7 +605,7 @@ Temporal material.. remove
 
   posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
   posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
-  posterior_g <- extract(fpgluk_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_g <- extract(fsins_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
   posterior_ln <- extract(fsins_ln, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
   
   mean(posterior_n$beta_Intercept)
