@@ -289,7 +289,33 @@ mebn.get_parents_with_type <- function(g, nodename, type)
 
 ##################################################
 
-mebn.target_dens_overlays <- function(localfit_directory)
+mebn.LOO_comparison_local <- function(graphdir1, graphdir2, dist)
+{
+  library(loo)
+
+
+  result <- compare(m1_loo, m2_loo)
+  
+  return(result)
+}
+
+##################################################
+
+mebn.AR_comparison_local <- function(graphdir)
+{
+  library(rstan)
+
+  m1 <- mebn.get_localfit(paste0(graphdir1, dist))
+
+  m1_ar1 <- extract(m1, pars = c("ar1"))
+
+  mean(post_hdl$ar1) # 0.08868632
+
+}
+
+##################################################
+
+mebn.target_dens_overlays <- function(localfit_directory, target_variables, dataset)
 {
   library(rstan)
   library(bayesplot)
@@ -303,16 +329,16 @@ mebn.target_dens_overlays <- function(localfit_directory)
   dens_plots <- list()
   i <- 1
   
-  for (targetname in assumedtargets$Name)
+  for (targetname in target_variables$Name)
   {
     target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
-    true_value <- as.vector(sysdimet[,targetname])
+    true_value <- as.vector(dataset[,targetname])
     
     posterior <- extract(target_blmm, pars = c("Y_rep"))
     posterior_y_50 <- posterior$Y_rep[1:50,]
     
-    scalemin <- as.numeric(as.character(assumedtargets[assumedtargets$Name == targetname,]$ScaleMin))
-    scalemax <- as.numeric(as.character(assumedtargets[assumedtargets$Name == targetname,]$ScaleMax))
+    scalemin <- as.numeric(as.character(target_variables[target_variables$Name == targetname,]$ScaleMin))
+    scalemax <- as.numeric(as.character(target_variables[target_variables$Name == targetname,]$ScaleMax))
     
     dens_plots[[i]] <- ppc_dens_overlay(true_value, posterior_y_50) + 
       coord_cartesian(xlim = c(scalemin,scalemax)) +
