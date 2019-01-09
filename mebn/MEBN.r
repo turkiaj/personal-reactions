@@ -350,16 +350,37 @@ mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
 
 ##################################################
 
-mebn.AR_comparison_local <- function(graphdir)
+mebn.AR_comparison <- function(target_variables, graphdir)
 {
   library(rstan)
+  
+  ar_table<-data.frame(matrix(nrow=nrow(target_variables), ncol=4))
+  colnames(ar_table) <- c("distribution", "AR1", "CI95l", "CI95u")
+  
+  n <- 1
+  for (targetname in target_variables$Name)
+  {
+    m1 <- mebn.get_localfit(paste0(graphdir, "/", targetname))
+    m1_extract <- extract(m1, pars = c("ar1"))
+    
+    c2 <- "NA"
+    c3 <- "NA"
+    c4 <- "NA"
 
-  m1 <- mebn.get_localfit(paste0(graphdir1, dist))
-
-  m1_ar1 <- extract(m1, pars = c("ar1"))
-
-  mean(post_hdl$ar1) # 0.08868632
-
+    #if (exists("m1_extract$ar1"))
+    #{
+      c2 <- mean(m1_extract$ar1)
+      # TODO: CI      
+    #}
+    
+    ar_table[n,1] <- targetname
+    ar_table[n,2] <- c2
+    ar_table[n,3] <- c3
+    ar_table[n,4] <- c3
+    n <- n + 1
+  }
+  
+  return(ar_table)
 }
 
 ##################################################

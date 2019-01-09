@@ -174,18 +174,10 @@ ar0_vs_ar1
 
 
 ```{r, ar1}
-# TODO: AR table
-library(rstan)
-fshdl_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fshdl")
-post_hdl <- extract(fshdl_ar1, pars = c("ar1"))
-
-mean(post_hdl$ar1) # 0.08868632
-
-fsins_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
-postins <- extract(fsins_ar1, pars = c("ar1"))
-
-mean(postins$ar1) # -0.01187752
-
+source("mebn/MEBN.r")
+ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
+ar1_comparison
+  
 ```
 
 
