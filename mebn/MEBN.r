@@ -289,14 +289,63 @@ mebn.get_parents_with_type <- function(g, nodename, type)
 
 ##################################################
 
-mebn.LOO_comparison_local <- function(graphdir1, graphdir2, dist)
+mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
 {
   library(loo)
-
-
-  result <- compare(m1_loo, m2_loo)
   
-  return(result)
+  comparison<-data.frame(matrix(nrow=nrow(target_variables), ncol=3))
+  colnames(comparison) <- c("distribution", graphdir1, graphdir2)
+  
+  n <- 1
+  for (targetname in target_variables$Name)
+  {
+    # Get models to compare
+    m1 <- mebn.get_localfit(paste0(graphdir1, "/", targetname))
+    m2 <- mebn.get_localfit(paste0(graphdir2, "/", targetname))
+    
+    # Statistics for model 1
+    m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
+    
+    remove(m1_rel_n_eff)
+    remove(m1_loo)
+    
+    if (!any(is.na(exp(m1_loglik))))
+    {
+      m1_rel_n_eff <- relative_eff(exp(m1_loglik))
+      suppressWarnings(m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4))
+    }
+    
+    # Statistics for model 2
+    m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
+    
+    remove(m2_rel_n_eff)
+    remove(m2_loo)
+    
+    if (!any(is.na(exp(m2_loglik))))
+    {
+      m2_rel_n_eff <- relative_eff(exp(m2_loglik))
+      suppressWarnings(m2_loo <- loo(m2_loglik, r_eff = m2_rel_n_eff, cores = 4))
+    }
+    
+    c1 <- targetname
+    
+    if (exists("m1_loo"))
+      c2 <- paste0(round(m1_loo$estimates[1,1], 3), " (", round(m1_loo$estimates[1,2], 3), ")")
+    else
+      c2 <- "NA"
+    
+    if (exists("m2_loo"))
+      c3 <- paste0(round(m2_loo$estimates[1,1], 3), " (", round(m2_loo$estimates[1,2], 3), ")")
+    else
+      c3 <- "NA"
+    
+    comparison[n,1] <- c1
+    comparison[n,2] <- c2
+    comparison[n,3] <- c3
+    n <- n + 1
+  }
+  
+  return(comparison)
 }
 
 ##################################################

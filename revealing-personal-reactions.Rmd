@@ -140,54 +140,11 @@ typical_effects
 Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models.
 
 ```{r, normal_gamma_loo}
-source("mebn/MEBN.r")
-
-target_variables <- assumedtargets
-graphdir1 <- "BLMM_normal/"
-graphdir2 <- "BLMM_gamma/hierarchical_idlink/"
-
-comparison<-data.frame(matrix(NA, nrow=nrow(target_variables), ncol=3))
-comparison$graph1 <- graphdir1
-comparison$graph2 <- graphdir2
-comparison$ELDP_LOO <- 0.0
-comparison$ELDP_LOO_SE <- 0.0
-
-for (targetname in target_variables$Name)
-{
-  dist <- "fshdl"
-  m1 <- mebn.get_localfit(paste0(graphdir1, dist))
-  m2 <- mebn.get_localfit(paste0(graphdir2, dist))
-
-  m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
-  m1_rel_n_eff <- relative_eff(exp(m1_loglik))
-  m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4)
-  
-  m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
-  m2_rel_n_eff <- relative_eff(exp(m2_loglik))
-  m2_loo <- loo(m2_loglik, r_eff = m2_rel_n_eff, cores = 4)
-  
-  l1 <- paste0(graphdir1, targetname)
-  l2 <- paste0(graphdir2, targetname)
-  
-  comp <- c(l1,l2,m) 
-  
-  elpd <- mebn.LOO_comparison_local(graphdir1,graphdir2,targetname)
-  
-  
-}
-
-# local dist           BLMM_normal       BLMM_gamma/hierarchical_idlink/
-# 
-# fshdl (LOO/SE)       212 (se)          435
-# fshdl (LOO/SE)       212 (se)          435
-# fshdl (LOO/SE)       212 (se)          435
-# fshdl (LOO/SE)       212 (se)          435
-
-
-
-# "The difference will be positive if the expected predictive accuracy for the second model is higher."
-
+normal_vs_gamma <- mebn.LOO_comparison(assumedtargets, "BLMM_normal", "BLMM_gamma/hierarchical_idlink")
+normal_vs_gamma
+# https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
+
 
 As the expected log predictive density (ELPD) of gamma model is higher, we should choose that for further development.
 
@@ -207,37 +164,16 @@ sysdimet_gamma_ar1 <- mebn.graphical_model(reaction_graph = initial_graph,
 ```
 
 ```{r gamma_ar1_ppc, echo=FALSE, eval=TRUE}
-mebn.target_dens_overlays("BLMM_gamma/ar1/")
+mebn.target_dens_overlays("BLMM_gamma/ar1/", assumedtargets, sysdimet)
 ```
 
 ```{r, gamma_ar1_loo}
-mebn.
-library(loo)
-
-# TODO: LOO Compare BNs
-#list.files("models/BLMM_gamma/hierarchical_idlink")
-
-m1 <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fshdl")
-m2 <- mebn.get_localfit("BLMM_gamma/ar1/fshdl")
-
-m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
-m1_rel_n_eff <- relative_eff(exp(m1_loglik))
-m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4)
-
-print(m1_loo)
-
-m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
-m2_rel_n_eff <- relative_eff(exp(m2_loglik))
-m2_loo <- loo(m2_loglik, r_eff = m2_rel_n_eff, cores = 4)
-
-print(m2_loo)
-
-# "The difference will be positive if the expected predictive accuracy for the second model is higher."
-print(compare(m1_loo, m2_loo), digits = 3)
-
+ar0_vs_ar1 <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/hierarchical_idlink", "BLMM_gamma/ar1")
+ar0_vs_ar1
 ```
 
 
+```{r, ar1}
 # TODO: AR table
 library(rstan)
 fshdl_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fshdl")
