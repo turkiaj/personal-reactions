@@ -49,7 +49,6 @@ Nutrients and their bodily responses are considered as random variables at the g
 initial_normal_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
 
-
 **Assumptions for local distributions**
 
 The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. 
@@ -59,6 +58,9 @@ The joint probability distribition of Bayesian network can constructed from dist
 Edges of the graph are absolute effects of nutrients.
 
 We start from a hierarchical model with normal distribution that estimates of absolute effects are considered as reference when developing the model.
+
+TODO: Plot tikz graph with Gaussian RVs and fully connected edges? No weights yet.
+
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 sysdimet_normal <- mebn.graphical_model(reaction_graph = initial_normal_graph, 
@@ -179,12 +181,13 @@ ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ar1_comparison
   
 ```
+## Pruning the graph
 
+Fit of the local distributions is now reasonable well for considering the graphical model that it describes. For gaining better nutritional insight and improving the model generalization, we should still prune out insignificant nutrients and holding only most relevant as edges of the graph.
 
-- Pruning insignificant nutrients with a horseshow prior. Projpred could be also used.
+Vehtari and Piiroinen () provided a good overview of Bayesian model selection methods. First, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
 
-
-```{r shrinkage_parameters, echo=FALSE, message=FALSE}
+```{r shrinkage_parameters, echo=TRUE, message=FALSE}
 shrinkage_parameters <- within(list(),
 {
     scale_icept  <- 1         # prior std for the intercept
@@ -197,13 +200,11 @@ shrinkage_parameters <- within(list(),
 })
 ```
 
-```{r}
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-```
-
+Next we fit the previous model with the Finnish horseshoe added
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs <- mebn.graphical_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
@@ -216,18 +217,54 @@ sysdimet_gamma_ar1_rhs <- mebn.graphical_model(reaction_graph = initial_graph,
                                    normalize_values = TRUE)
 ```
 
+And then we test again how the shrinked model fits, and does its predictive score improve from non-shrinked model 
+
 ```{r normal_model_ppc, echo=FALSE, eval=TRUE}
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/")
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/", assumedtargets, sysdimet)
+```
+
+```{r, ar1_rhs_loo}
+nonrhs_vs_rhs <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/ar1", "BLMM_gamma/ar1_rhs")
+nonrhs_vs_rhs
+```
+
+Unfortunately, a visual comparison of PPCS show bias in model fits. This is further confirmed by a LOO comparison that shows little to significant drawbacks in prediction performance.
+
+Thus, we discard the RHS model and proceed with previous full model with AR(1) structure. Projection method is shown to be a good for finding relevant model in the model space (viite). It seeks to find a minimal model that has 95% of predictive power of a full model.
+
+The method has been implemented in projpred package 
+
+```{r projpred}
+
+## TODO: Repeat this for all local model in the graph
+
+# Test with BLMM_gamma/ar1/fshdl 
+target_column <- assumedtargets[assumedtargets$Name=="fshdl",]
+
+# Get parameters that we used to fit the previous model
+params <- mebn.set_model_parameters(assumedpredictors, target_column, group_column = "SUBJECT_ID", inputdata = sysdimet, normalize_values = TRUE)
+
+# Initialize a reference model for variable selection
+
+refm <- init_refmodel(z = params$X, 
+                      y = params$Y, 
+                      gaussian(), 
+                      predfun = mebn.linpred, 
+                      dis = sysdimet_gamma_ar1,
+                      offset = NULL, 
+                      intercept = TRUE,
+                      cvfun = NULL, 
+                      cvfits = NULL)
+
+
+
+
 ```
 
 
-## Pruning the graph
-
-- Remove the insignicant components: more informative graph and multiresponse
-- TODO: use projpred to remove edges
-
-
 ### Principal components as graph visualiation
+
+# TODO: TIKZ Network
 
 After finding a reasonable fit, we can analyze the principal components that explain the variation.
 
