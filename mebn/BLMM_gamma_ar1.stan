@@ -17,8 +17,6 @@ transformed data {
   matrix[N, p - 1] Xc;    // X centered
   matrix[N, p - 1] Xp;    // X without intercept, non-centered
   vector[p - 1] means_X;  // column means of X before centering 
-  
-  //real offset = 2;
 
   Pc = p - 1;  // the intercept is removed from the design matrix 
   for (i in 2:p) { 
@@ -130,6 +128,7 @@ generated quantities {
   vector[N] log_lik;              // log-likelihood for LOO
   real mu_hat;
   real g_beta_hat;
+  vector[k-1] personal_effect[J];
 
   // Correlation matrix of random-effects, C = L'L
   C = multiply_lower_tri_self_transpose(L); 
@@ -150,4 +149,11 @@ generated quantities {
     // Compute log-Likelihood for later LOO comparison of the models 
     log_lik[n] = gamma_lpdf(Y[n] | g_alpha, g_beta_hat);
   }
+  
+  // Finally, sample personal effects for each nutrient
+  for (j in 1:J) 
+  {
+    // beta vector does not include intercept, b is also sliced not to include it
+    personal_effect[j] = beta + b[j][2:k];
+  }  
 } 
