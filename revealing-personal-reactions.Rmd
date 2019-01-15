@@ -14,11 +14,9 @@ knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 source("mebn/MEBN.r")
 ```
 
-This notebook provides a reproducible analysis of the nutrional effects that is the main contribution of the article. The companying article provides more theory, but the experimental part elaborated here in detail.
+In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network is a directed graphical model where nodes of the graph are random variables and the edges between the nodes indicate a flow of information. In a nutritional modelling we assing the amount of nutrients at the person's diet and the indicators of person's well-being those random variables with a probability distribution of possible values. 
 
-With the effects of nutrition we mean the amount of variance in person's blood test values that can be explained with different nutrients in his or her past diet. Beside the nutrients, also personal details, like age, gender, and medication, can affect the blood test values that we can chosen to reflect the personal well-being. 
-
-We propose that this system can be plausible modelled with a directed graph where nutrients and other predictors may affect one or several blood test values. More precisely, we consider Bayesian networks that can model this system as a joint probability distribution. They cannot contain cycles from target nodes back to their predictors, and thus we leave out all the connections from blood test values back to nutrients. We consider that this is biologically plausible and does not leave out possible models. 
+The goal of graphical modelling is then to find a graph that most probably describes the correct conditional relationships between nutrients and their effects. At the following analysis we have a dataset with 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on graphs where nutrients are affecting blood tests and only the magnitude of effect is left to be estimated. --Multiple levels of magnitude-- 
 
 ## Data
 
