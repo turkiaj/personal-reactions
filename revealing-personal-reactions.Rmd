@@ -1,9 +1,13 @@
 ---
-title: "Personal Effects of Nutrition"
+title: "Revealing the Personal Effects of Nutrition with Mixed-Effect Bayesian Network"
+author:
+- Jari Turkia, jari.turkia@cgi.com
+- University of Eastern Finland
+bibliography: biblio.bib
 output:
   html_document: default
-  word_document: default
   pdf_document: default
+abstract: This notebook describes the implementation of the modelling method and the experimental analysis that is described in the main article.
 ---
 
 ```{r setup, include=FALSE}
@@ -14,11 +18,40 @@ knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 source("mebn/MEBN.r")
 ```
 
-This notebook provides a reproducible analysis of the nutrional effects that is the main contribution of the article. The companying article provides more theory, but the experimental part elaborated here in detail.
+In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network is a directed graphical model where nodes of the graph are random variables and the edges between the nodes indicate a flow of information. In a nutritional modelling we assing the amount of nutrients at the person's diet and the indicators of person's well-being those random variables with a probability distribution of possible values. 
 
-With the effects of nutrition we mean the amount of variance in person's blood test values that can be explained with different nutrients in his or her past diet. Beside the nutrients, also personal details, like age, gender, and medication, can affect the blood test values that we can chosen to reflect the personal well-being. 
+The goal of graphical modelling is to find a graph that most probably describes the correct conditional relationships between nutrients and their effects. In this article we use this method to analyze a dataset from the Sysdimet study [] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated.
 
-We propose that this system can be plausible modelled with a directed graph where nutrients and other predictors may affect one or several blood test values. More precisely, we consider Bayesian networks that can model this system as a joint probability distribution. They cannot contain cycles from target nodes back to their predictors, and thus we leave out all the connections from blood test values back to nutrients. We consider that this is biologically plausible and does not leave out possible models. 
+**Formal definition of the problem.** Let us denote the graph of interconnected nutrients and responses with $G$. We can then formulate the modeling problem as finding the graph $G$ that is the most probable given the data $D$
+
+\begin{align}
+{P}({G}|{D})
+\end{align}
+
+By using the Bayes' Rule we can be split this probability into proportions of the data likelihood of the given graph and any prior information we might have about suitable graphs 
+
+\begin{align}
+\label{prop_bayes_theorem}
+{P}({G}|{D}) \propto {P}({D}|{G}) {P}({G})
+\end{align}
+
+Now the problem is converted into a search of the graph with a maximum likelihood for the given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
+
+The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lays in their hierarchical estimation.
+
+**Estimation of the local distributions**.
+As the data consists of repeated measurements from the patients..
+
+Generally, the local probability distributions can be from exponential family of distributions, but in this case we consider only normally distributed response variables. The subset of parent variables, that we assume containing personal variance, is denoted with $pa_Z(X_i)$. For the mixed-effect modeling we need to estimate parameters \(\phi_i = \{\beta_i, b_i\}\) for expressing the typical and personal reaction types. In a multivariate normal model the uncertainty is furthermore defined by variance-covariance matrix $V_i$
+
+\begin{align}
+\begin{split}
+\label{Normal LME}
+{P}({X_i}|{pa(X_i), \phi_i, G_i}) = EXP-FAM({X_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
+\end{split}
+\end{align}
+
+This allows us to define the problem of nutritional effects as mixed-effect Bayesian network as defined in [@Bae2016].
 
 ## Data
 
@@ -41,19 +74,11 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 (explain variables)
 
-**Nutritional effects as Bayesian Network**
-
-Nutrients and their bodily responses are considered as random variables at the graph
+**Constructing the graph**
 
 ```{r}
 initial_normal_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
-
-**Assumptions for local distributions**
-
-The joint probability distribition of Bayesian network can constructed from distict local distributions [viite]. Modeling the local distributions.. 
-
-**Constructing the graph**
 
 Edges of the graph are absolute effects of nutrients.
 
@@ -63,7 +88,7 @@ TODO: Plot tikz graph with Gaussian RVs and fully connected edges? No weights ye
 
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-sysdimet_normal <- mebn.graphical_model(reaction_graph = initial_normal_graph, 
+sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_normal_graph, 
                                          inputdata = sysdimet,
                                          predictor_columns = assumedpredictors, 
                                          assumed_targets = assumedtargets, 
@@ -96,7 +121,7 @@ mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 initial_gamma_graph <- mebn.new_graph_with_randomvariables(datadesc)
 
-sysdimet_gamma <- mebn.graphical_model(reaction_graph = initial_gamma_graph, 
+sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
@@ -154,7 +179,7 @@ As the expected log predictive density (ELPD) of gamma model is higher, we shoul
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
-sysdimet_gamma_ar1 <- mebn.graphical_model(reaction_graph = initial_graph, 
+sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
@@ -213,6 +238,11 @@ Local distributions seem to have reasonable good fit. For better overall insight
 ### Principal components as graph visualiation
 
 # TODO: TIKZ Network
+
+```{r}
+
+```
+
 
 After finding a reasonable fit, we can analyze the principal components that explain the variation.
 
@@ -693,7 +723,7 @@ Next we fit the previous model with the Finnish horseshoe added
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-sysdimet_gamma_ar1_rhs <- mebn.graphical_model(reaction_graph = initial_graph, 
+sysdimet_gamma_ar1_rhs <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
