@@ -26,7 +26,7 @@ mebn.new_graph_with_randomvariables <- function(datadesc)
   # Add nodes to reaction graph for all the random variables  
   reaction_graph <- reaction_graph + vertices(as.vector(assumed_targets$Name), 
                                               label=as.vector(assumed_targets$Description), 
-                                              type="rv",
+                                              type=next_order,
                                               color = "#74aaf2", 
                                               size = 1,
                                               shape = "circle")
@@ -40,7 +40,7 @@ mebn.new_graph_with_randomvariables <- function(datadesc)
   
   reaction_graph <- reaction_graph + vertices(as.vector(predictor_columns$Name), 
                                               label=as.vector(predictor_columns$Description), 
-                                              type="rv",
+                                              type=min_order,
                                               color = "#3cd164", 
                                               size = 1, 
                                               shape = "circle")
@@ -58,6 +58,15 @@ mebn.new_graph_with_randomvariables <- function(datadesc)
 
 ##################################################
 
+##################################################
+
+mebn.posterior <- function(igraph_node)
+{
+
+}
+
+##################################################
+  
 mebn.add_priornodes <- function(datadesc, reaction_graph)
 {
   require(igraph)  
@@ -350,6 +359,17 @@ mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
 
 ##################################################
 
+mebn.linpred <- function(X, beta, Z, b, g_alpha)
+{
+  
+  mu <- beta %*% X + b %*% Z
+  
+  # ?? 
+  return (dgamma(g_alpha, g_alpha(mu)))
+}
+
+##################################################
+
 mebn.AR_comparison <- function(target_variables, graphdir)
 {
   library(rstan)
@@ -631,7 +651,7 @@ mebn.PersonalSignificanceTest <- function(personal_coef)
 
 ##################################################
 
-mebn.graphical_model <- function(reaction_graph, inputdata, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
+mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
 {
   for (c in 1:dim(assumed_targets)[1])
   {

@@ -14,6 +14,13 @@ abstract: This notebook describes the implementation of the modelling method and
 library(knitr)
 knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 
+# this allows using tikz rendering for plots with "dev=tikz"
+knit_hooks$set(plot = function(x, options) {
+  if ('tikz' %in% options$dev && !options$external) {
+    hook_plot_tex(x, options)
+  } else hook_plot_md(x, options)
+})
+
 # Load common MEBN package
 source("mebn/MEBN.r")
 ```
@@ -71,10 +78,6 @@ sysdimet <- read.csv(file="data/SYSDIMET_diet.csv", sep=";", dec=",")
 assumedpredictors <- datadesc[datadesc$Order==100,]    
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
-
-
-
-(explain variables)
 
 **Constructing the graph**
 
@@ -180,7 +183,9 @@ As the expected log predictive density (ELPD) of gamma model is higher, we shoul
 ##Varying response time: AR-structures##
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
 
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    predictor_columns = assumedpredictors, 
@@ -193,6 +198,7 @@ sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph,
 
 # FSINS and FPLUK-models had undefined values in beta_Intercept and few in C-matrix. Maybe offset-value should be bigger?
 ```
+
 
 ```{r gamma_ar1_ppc, echo=FALSE, eval=TRUE}
 mebn.target_dens_overlays("BLMM_gamma/ar1/", assumedtargets, sysdimet)
@@ -260,26 +266,20 @@ top_pers_edges <- head(alledges[order(-alledges$b_sigma)], 20)
 # Comment out this row to see all the connections at the model
 sysdimet_visgraph <- delete.edges(sysdimet_visgraph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
 
-# Write the MEBN in GEXF format for visualization
-mebn.write_gexf(sysdimet_visgraph, "sysdimet.gexf")
+V(sysdimet_visgraph)$size = 20 # MEBN size = 1 !!
 
-# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
-gexf_file <- file("sysdimet.gexf") 
-graph_string <- paste(readLines(gexf_file), collapse = "")
+bipa <- layout_as_bipartite(sysdimet_visgraph, types = V(sysdimet_visgraph)$type == "200", vgap = 50)
+
+E(sysdimet_visgraph)$color="red"
+E(sysdimet_visgraph)[E(sysdimet_visgraph)$weight < 0]$color="blue"
+
+# Idea: make own edge for personal variance to visualization graph
+
+#plot(sysdimet_visgraph, shape="circle", layout=bipa, xlim=c(-10,10), ylim=c(-10,10), rescale=FALSE)
+plot(sysdimet_visgraph, shape="circle", layout=bipa, rescale=TRUE)
+
+
 ```
-
-<script>
-  var sysdimet_graph = '`r graph_string`';
-</script>
-
-<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
-<div id="sigmacontainer"></div>
-
-```{r, echo=FALSE, message=FALSE}
-# Load the graph drawing JavaScript
-htmltools::includeHTML("population_graph.htm")
-```
-</br>
 
 ## Inference
 
