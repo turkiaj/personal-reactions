@@ -58,8 +58,6 @@ mebn.new_graph_with_randomvariables <- function(datadesc)
 
 ##################################################
 
-##################################################
-
 mebn.posterior <- function(igraph_node)
 {
 
@@ -239,21 +237,6 @@ mebn.localsummary <- function(fit)
   ModelSummary$D <- sdM %*% ModelSummary$C %*% t(sdM)
   
   return(ModelSummary)
-}
-
-##################################################
-
-mebn.get_personal_arcweight <- function(target, graph, parent_values)
-{
-  # fixed effects
-  beta.hat <- as.matrix(localsummary$fixef)
-
-  # random effects
-  b.hat <- ranefs[2:length(ranefs)]
-  
-  weight <- beta.hat + b.hat
-  
-  return(weight)
 }
 
 ##################################################
@@ -675,9 +658,7 @@ mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, a
                                               weight = localsummary$fixef[p], 
                                               b_sigma = localsummary$ranef_sd[p+1],
                                               shape   = "confband", 
-                                              mean   = localsummary$fixef[p],
-                                              l95CI  = localsummary$fixef[p] - localsummary$ranef_sd[p+1]/2,
-                                              u95CI  = localsummary$fixef[p] + localsummary$ranef_sd[p+1]/2)
+                                              mean   = localsummary$fixef[p])
       
       # Fixed-effect
       reaction_graph <- reaction_graph + vertex(paste0("beta_", predictor_name, "_", target_name), 
@@ -717,98 +698,66 @@ mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, a
 
 ##################################################
 
-mebn.specific_graph <- function(reaction_graph, personal_data, alldata, predictor_columns, assumed_targets, local_model_cache = "models", edge_significance_test)
+mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, assumed_targets, local_model_cache)
 {
-  predictor_names <- as.vector(predictor_columns$Name)
-  new_input <- subset(personal_data, select = predictor_names)
+  library(igraph)
+  library(rstan)
   
   for (c in 1:dim(assumed_targets)[1])
   {
     target_column <- assumed_targets[c,]
     target_name <- as.vector(target_column$Name)
     
-    localfit <- mebn.get_localfit(target_name, local_model_cache)
+    localfit <- mebn.get_localfit(paste0(local_model_cache, target_name))
+
+    # extract estimations for specific person
+    posterior <- extract(localfit, pars = c("personal_effect", "b"))
+    b_blmm <- colMeans(posterior$b)
+    beta_b_blmm <- colMeans(posterior$personal_effect)
     
-    if (is.null(localfit))
-    {
-      stop(paste0("Local model for ", target_name, " not found in '", local_model_cache, "'"))
-    }
-    
-    localsummary <- mebn.localsummary(localfit)
-    new_response <- subset(personal_data, select = target_name)
-    
-    # Predict random-effects with BLUP
-    ranefs <- mebn.predict_ranefs(localsummary, new_input, new_response)
-    
-    # Get variances of BLUP, i.e. prediction errors
-    localparams <- mebn.set_model_parameters(assumedpredictors, assumedtargets, "notinuse", alldata, TRUE, TRUE)
-    err <- mebn.ranef_BLUP_vars(localparams, localsummary)
-    ranef_BLUP_vars <- err$var_BLUP
-    
-    if (!is.null(prediction_data))
-    {
-      # Set predicted value and prediction error for target node
-      prediction_input <- subset(prediction_data, select = predictor_names)
-      targetvalue <- mebn.predict_nodevalue(localsummary, ranefs, prediction_input)
-      target_95CI <- mebn.get_prediction_CI95(personal_data, err)
-      
-      vindex <- as.numeric(V(reaction_graph)[target_name])
-      reaction_graph <- set_vertex_attr(reaction_graph, "mean", index = vindex, value = targetvalue)
-      reaction_graph <- set_vertex_attr(reaction_graph, "l95CI", index = vindex, value = targetvalue-target_95CI)
-      reaction_graph <- set_vertex_attr(reaction_graph, "u95CI", index = vindex, value = targetvalue+target_95CI)
-      reaction_graph <- set_vertex_attr(reaction_graph, "scalemin", index = vindex, value = target_column$ScaleMin)
-      reaction_graph <- set_vertex_attr(reaction_graph, "scalemax", index = vindex, value = target_column$ScaleMax)
-    }
+    #pe <- summary(target_blmm, pars="personal_effect", probs = c(0.05, 0.95))$summary[,c(1,4,5)]
     
     # - Loop through betas for current target
+    predictor_names <- as.vector(predictor_columns$Name)
+    
     for (p in 1:length(predictor_names))
     {
       predictor_name <- predictor_names[p]
       
-      predicted_coef <- localsummary$fixef[p] + ranefs[p+1]
-      prediction_error <- ranef_BLUP_vars[p]
+      # Attach the random variable
+      reaction_graph <- reaction_graph + edge(c(predictor_name, target_name),
+                                              weight = beta_b_blmm[person_id,p], 
+                                              b = b_blmm[person_id,p],
+                                              mean = beta_b_blmm[person_id,p])
       
-      if (edge_significance_test(predicted_coef) == TRUE)
-      {
-        # Muutettu confband-kaari n?ytt?m??n betan vahvuutta ja CI esitt?? henk.koht. vaihtelua
-        
-        reaction_graph <- reaction_graph + edge(c(predictor_name, target_name), 
-                                                weight = predicted_coef, 
-                                                shape   = "confband", 
-                                                mean   = predicted_coef,
-                                                l95CI  = prediction_error/2,
-                                                u95CI  = prediction_error/2)
-        
-        # TODO: Should prior distributions of predictor be placed here? 
-        if (FALSE) {
-          vindex <- as.numeric(V(reaction_graph)[predictor_name])     
-          reaction_graph <- set_vertex_attr(reaction_graph, "mean", index = vindex, value = localsummary$parent_mean[p])
-          reaction_graph <- set_vertex_attr(reaction_graph, "l95CI", index = vindex, value = localsummary$parent_l95CI[p])
-          reaction_graph <- set_vertex_attr(reaction_graph, "u95CI", index = vindex, value = localsummary$parent_u95CI[p])
-          reaction_graph <- set_vertex_attr(reaction_graph, "scalemin", index = vindex, value = predictor_columns[p,]$ScaleMin)
-          reaction_graph <- set_vertex_attr(reaction_graph, "scalemax", index = vindex, value = predictor_columns[p,]$ScaleMax)
-          
-          #reaction_graph <- set_vertex_attr(reaction_graph, "scalemin", index = vindex, value = 1500.0)
-          #reaction_graph <- set_vertex_attr(reaction_graph, "scalemax", index = vindex, value = 3000.0)
-        }
-        
-        # Add random-effect for significant predictors
-        #reaction_graph <- reaction_graph + vertex(paste0("b_", predictor_name, "_", target_name), label=paste0("b_", predictor_name), color="#AAAAAA", size = 0.5, shape = "disc")
-        #reaction_graph <- reaction_graph + vertex(paste0("b_sigma_", predictor_name, "_", target_name), label="b_sigma", color="#AAAAAA", size = localsummary$ranef_sd[p], shape = "disc")
-        
-        #reaction_graph <- reaction_graph + edge(paste0("b_sigma_", predictor_name, "_", target_name), paste0("b_", predictor_name, "_", target_name), shape = "arrow", weight = localsummary$ranef_sd[p]) 
-        #reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight=1)
-      }
-      else
-      {
-        print(paste0("pruning out edge ", predictor_name, "->", target_name))
-      }
+      # Personal effect (beta + b)
+      reaction_graph <- reaction_graph + vertex(paste0("personal_", predictor_name, "_", target_name), 
+                                                label=paste0("personal_", predictor_name), 
+                                                type="personal", color="#AAAAAA", 
+                                                value = beta_b_blmm[person_id,p], 
+                                                value_l95CI = 0,
+                                                value_u95CI = 0,
+                                                shape = "circle")
+      
+      reaction_graph <- reaction_graph + edge(paste0("personal_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "personal") 
+
+      # Personal variation (b)
+      reaction_graph <- reaction_graph + vertex(paste0("b_", predictor_name, "_", target_name), 
+                                                label=paste0("b_", predictor_name), 
+                                                type="b", color="#AAAAAA", 
+                                                value = b_blmm[person_id,p], 
+                                                value_l95CI = 0,
+                                                value_u95CI = 0,
+                                                shape = "circle")
+      
+      reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "b") 
     }
     
   } # loop targets
   
   return(reaction_graph)
 }
+
 ##################################################
 
 mebn.plot_typical_effects <- function(reaction_graph, top_effects)
@@ -849,6 +798,56 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
   
   # Idea: make own edge for personal variance to visualization graph
+  
+  plot(visual_graph, 
+       layout=bipa_layout, 
+       rescale=TRUE,
+       vertex.label.family="Helvetica",
+       vertex.label.color="black",
+       vertex.label.cex=1,
+       edge.arrow.size=1,
+       edge.arrow.width=1)
+}
+
+##################################################
+
+mebn.plot_personal_effects <- function(personal_graph, top_effects)
+{
+  # Parameter and hyperparameter nodes are removed and visualized otherwise
+  visual_graph <- personal_graph
+  
+  # Remove edges to latent variables
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="beta"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="personal"))
+  
+  # Remove nodes of latent variable
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="beta"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="personal"))
+  
+  # Filter only the most significant edges having large typical effect
+  alledges <- E(visual_graph)
+  top_neg_edges <- head(alledges[order(alledges$weight)], top_effects)
+  top_pos_edges <- head(alledges[order(-alledges$weight)], top_effects)
+
+  # Comment out this row to see all the connections at the model
+  visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges)])
+  
+  # Graph layout
+  V(visual_graph)$size = 10 
+  # - put all blood test values in own rank
+  bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
+  # - flip layout sideways, from left to right
+  gap <- 4
+  bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+  
+  # Color and size encoding for edges according to beta coefficient
+  E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
+  E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
   
   plot(visual_graph, 
        layout=bipa_layout, 

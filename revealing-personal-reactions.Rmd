@@ -265,59 +265,45 @@ For better undestanding, we can also visualize these personal variances as a gra
 ```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
 source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, 15)
-
 ```
 
+Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
 
-
-Let us explore these identified personal differences in effects of nutrition. Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
-
-For this analysis we can collect the estimations of personal effects and the can use k-means algorithm to find similarly behaving clusters within patients. Note that now we are using already estimated effects from the whole dataset. In last part, we show the predictive ability of our model and predict personal graphs.
-
-**
-
+For an effective overview, we gather all personal effects and personal variations from the local distributions of the graph
 
 ```{r kmeans_dfs, echo=FALSE, eval=FALSE}
+library(rstan)
 
 personal_variations_from_mean <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 personal_effects <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 personal_effects_quantiles <- matrix(NA, ncol=3, nrow=106*22*5)
-```
 
-```{r}
-#fsins_gamma_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
-#pe <- summary(fsins_gamma_ar1, pars="personal_effect", probs = c(0.25, 0.75))$summary[,c(1,4,5)]
-#pe
+modelcache <- "BLMM_gamma/ar1/"
 
-```
-
-
-```{r kmeans_dfs, echo=FALSE, eval=FALSE}
-
+i <- 1
 for (targetname in assumedtargets$Name)
 {
-  target_blmm <- mebn.get_localfit(targetname)
-
+  target_blmm <- mebn.get_localfit(paste0(modelcache,targetname))
   posterior <- extract(target_blmm, pars = c("personal_effect", "b"))
 
   b_blmm <- colMeans(posterior$b)
   beta_b_blmm <- colMeans(posterior$personal_effect)
   
-  pe <- summary(target_blmm, pars="personal_effect", probs = c(0.05, 0.95))$summary[,c(1,4,5)]
+  #pe <- summary(target_blmm, pars="personal_effect", probs = c(0.05, 0.95))$summary[,c(1,4,5)]
   
   if (i == 1) {
     # variance of the intercept is omitted
     personal_variations_from_mean <- b_blmm[,2:dim(b_blmm)[2]]
     personal_effects <- beta_b_blmm
-    personal_effects_quantiles <- pe
+    #personal_effects_quantiles <- pe
   }
   else
   {
     personal_variations_from_mean <- cbind(personal_variations_from_mean, b_blmm[,2:dim(b_blmm)[2]])
     personal_effects <- cbind(personal_effects, beta_b_blmm)
-    personal_effects_quantiles <- rbind(pe)
+    #personal_effects_quantiles <- rbind(pe)
+    i <- i + 1
   }
-
 }
 
 ```
@@ -477,41 +463,10 @@ ggplot(plot_data, aes(x=effect, y=amount)) +
 
 Finally, we can hold out a set of data for group of patients and test the predictive ability of the model. Let's calculate the model with a training set and do predictions for this separate test set.
 
-### Personal graph
-
-Similar to the population level graph, we can now predict a personal graphs that indicate how nutrients affect their blood values.
-
-```{r, echo=TRUE, message=TRUE}
-library(rstan)
-source("mebn/MEBN.r")
-
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-
-p37_graph <- mebn.personal_graph(reaction_graph = initial_graph, 
-                                   person_id = 37,
-                                   predictor_columns = assumedpredictors, 
-                                   assumed_targets = assumedtargets)
-
-# Write the MEBN in GEXF format for visualization
-mebn.write_gexf(p37_graph, "p37.gexf")
-
-# Load the graph stored in gexf-file as pass it to JavaScript visualization as a string
-gexf_file <- file("p37.gexf") 
-graph_string <- paste(readLines(gexf_file), collapse = "")
+```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+person23 <- mebn.personal_graph(person_id = 23, initial_graph, assumedpredictors, assumedtargets, "BLMM_gamma/ar1/")
+mebn.plot_personal_effects(person23, 20)
 ```
-
-<script>
-  var sysdimet_graph = '`r graph_string`';
-</script>
-
-<!-- the graph is drawn in this container. variable 'sysdimet_graph' is hard coded to contain the gexf-string -->
-<div id="sigmacontainer"></div>
-
-```{r, echo=FALSE, message=FALSE}
-# Load the graph drawing JavaScript
-htmltools::includeHTML("population_graph.htm")
-```
-</br>
 
 
 
