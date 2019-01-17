@@ -302,10 +302,10 @@ for (targetname in assumedtargets$Name)
     personal_variations_from_mean <- cbind(personal_variations_from_mean, b_blmm[,2:dim(b_blmm)[2]])
     personal_effects <- cbind(personal_effects, beta_b_blmm)
     #personal_effects_quantiles <- rbind(pe)
-    i <- i + 1
   }
+  
+  i <- i + 1
 }
-
 ```
 
 
@@ -343,7 +343,7 @@ gridExtra::grid.arrange(plot1,plot2,nrow=1)
 
 Tässä kaavion X-akselin nollakohdassa on kyseisen reagointitavan tyypillinen tai keskimääräinen arvo, ja palkit kuvaavat löydettyjen ryhmien poikkeamaa tästä keskiarvosta.
 
-```{r variation clusters, echo=FALSE, eval=FALSE}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
 km <- kmeans(personal_variations_from_mean, centers = 4)
 
 sysdimet$variation_group <- km$cluster # mihin klusteriin kukin potilas kuuluu. vertaa tätä esimerkiksi geeneihin
@@ -363,7 +363,7 @@ variations_data$effect <- factor(effect_levels, levels=effect_levels)
 variations_data$overall_effect <- abs(variations_data$'1')+abs(variations_data$'2')+abs(variations_data$'3')+abs(variations_data$'4')
 
 # Suodata näistä vain suurimmat näkyviin
-variations_data.filtered <- variations_data[variations_data$overall_effect > 0.002,]
+variations_data.filtered <- variations_data[variations_data$overall_effect > 0.05,]
 
 # Piirtoa varten eri klustereiden arvot samaan sarakkeeseen ja oma kenttä merkitsemään klusteria
 
@@ -403,7 +403,7 @@ ggplot(plot_data, aes(x=effect, y=amount)) +
 
 Tässä ryhmittelyä on tehty itse vaikutuksen perusteella.
 
-```{r effect clusters, echo=FALSE, eval=FALSE}
+```{r effect clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15}
 km <- kmeans(personal_effects, centers = 4)
 
 sysdimet$effect_group <- km$cluster # mihin klusteriin kukin potilas kuuluu. vertaa tätä esimerkiksi geeneihin
@@ -423,7 +423,7 @@ variations_data$effect <- factor(effect_levels, levels=effect_levels)
 variations_data$overall_effect <- abs(variations_data$'1')+abs(variations_data$'2')+abs(variations_data$'3')+abs(variations_data$'4')
 
 # Suodata näistä vain suurimmat näkyviin
-variations_data.filtered <- variations_data[variations_data$overall_effect > 0.004,]
+variations_data.filtered <- variations_data[variations_data$overall_effect > 0.5,]
 
 # Piirtoa varten eri klustereiden arvot samaan sarakkeeseen ja oma kenttä merkitsemään klusteria
 
@@ -459,13 +459,18 @@ ggplot(plot_data, aes(x=effect, y=amount)) +
 ```
 
 
+### Confidence of cholesterol medication's effect to blood insulin
+
 ### Personal prediction
 
 Finally, we can hold out a set of data for group of patients and test the predictive ability of the model. Let's calculate the model with a training set and do predictions for this separate test set.
 
-```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+```{r}
 person23 <- mebn.personal_graph(person_id = 23, initial_graph, assumedpredictors, assumedtargets, "BLMM_gamma/ar1/")
-mebn.plot_personal_effects(person23, 20)
+```
+
+```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+mebn.plot_personal_effects(person23, 5)
 ```
 
 
