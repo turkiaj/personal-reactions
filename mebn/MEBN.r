@@ -670,8 +670,6 @@ mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, a
     {
       predictor_name <- predictor_names[p]
       
-      # All the knowledge is stored to the graph
-      
       # Attach the random variable
       reaction_graph <- reaction_graph + edge(c(predictor_name, target_name), 
                                               weight = localsummary$fixef[p], 
@@ -810,6 +808,104 @@ mebn.specific_graph <- function(reaction_graph, personal_data, alldata, predicto
   } # loop targets
   
   return(reaction_graph)
+}
+##################################################
+
+mebn.plot_typical_effects <- function(reaction_graph, top_effects)
+{
+  # Parameter and hyperparameter nodes are removed and visualized otherwise
+  visual_graph <- reaction_graph
+  
+  # Remove edges to latent variables
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="beta"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b"))
+  
+  # Remove nodes of latent variable
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="beta"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b"))
+  
+  # Filter only the most significant edges having large typical effect or large personal variance
+  alledges <- E(visual_graph)
+  top_neg_edges <- head(alledges[order(alledges$weight)], top_effects)
+  top_pos_edges <- head(alledges[order(-alledges$weight)], top_effects)
+  top_pers_edges <- head(alledges[order(-alledges$b_sigma)], top_effects)
+  
+  # Comment out this row to see all the connections at the model
+  visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
+  
+  # Graph layout
+  V(visual_graph)$size = 10 
+  # - put all blood test values in own rank
+  bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
+  # - flip layout sideways, from left to right
+  gap <- 4
+  bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+
+  # Color and size encoding for edges according to beta coefficient
+  E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
+  E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
+  
+  # Idea: make own edge for personal variance to visualization graph
+  
+  plot(visual_graph, 
+       layout=bipa_layout, 
+       rescale=TRUE,
+       vertex.label.family="Helvetica",
+       vertex.label.color="black",
+       vertex.label.cex=1,
+       edge.arrow.size=1,
+       edge.arrow.width=1)
+}
+
+##################################################
+
+mebn.plot_personal_variations <- function(reaction_graph, top_effects)
+{
+  # Parameter and hyperparameter nodes are removed and visualized otherwise
+  visual_graph <- reaction_graph
+  
+  # Remove edges to latent variables
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="beta"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.edges(visual_graph, which(E(visual_graph)$type=="b"))
+  
+  # Remove nodes of latent variable
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="beta"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b_sigma"))
+  visual_graph <- delete.vertices(visual_graph, which(V(visual_graph)$type=="b"))
+  
+  # Filter only the most significant edges having large typical effect or large personal variance
+  alledges <- E(visual_graph)
+  top_neg_edges <- head(alledges[order(alledges$weight)], top_effects)
+  top_pos_edges <- head(alledges[order(-alledges$weight)], top_effects)
+  top_pers_edges <- head(alledges[order(-alledges$b_sigma)], top_effects)
+  
+  # Comment out this row to see all the connections at the model
+  visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
+  
+  # Graph layout
+  V(visual_graph)$size = 10 
+  # - put all blood test values in own rank
+  bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
+  # - flip layout sideways, from left to right
+  gap <- 4
+  bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+  
+  # Color and size encoding for edges according to beta coefficient
+  E(visual_graph)$color="gray"
+  E(visual_graph)$width = abs(E(visual_graph)$b_sigma) * 7
+  
+  plot(visual_graph, 
+       layout=bipa_layout, 
+       rescale=TRUE,
+       vertex.label.family="Helvetica",
+       vertex.label.color="black",
+       vertex.label.cex=1,
+       edge.arrow.size=1,
+       edge.arrow.width=1)
 }
 
 ##################################################

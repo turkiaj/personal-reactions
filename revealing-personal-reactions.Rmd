@@ -60,6 +60,8 @@ Generally, the local probability distributions can be from exponential family of
 
 This allows us to define the problem of nutritional effects as mixed-effect Bayesian network as defined in [@Bae2016].
 
+The goal of graphical modelling is then to find a graph that most probably describes the correct conditional relationships between nutrients and their effects. At the following analysis we have a dataset with 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on graphs where nutrients are affecting blood tests and only the magnitude of effect is left to be estimated. --Multiple levels of magnitude-- 
+
 ## Data
 
 The dataset in our experiment comes from Sysdimet study. ... variables, data points..
@@ -211,7 +213,6 @@ ar0_vs_ar1
 
 
 ```{r, ar1}
-source("mebn/MEBN.r")
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ar1_comparison
   
@@ -219,105 +220,90 @@ ar1_comparison
 
 ## Data analysis
 
+Rest of the notebook consideres the inference that we can do with previously estimated mixed-effect bayesian network.
+
+First we do exploration over the whole sample population for finding clusters of similarly behaving patients. Then in the last part we show how we can predict personal nutritional effects for individual patients.
+
+## Principal components as graph visualiation
+
 Local distributions seem to have reasonable good fit. For better overall insight to nutritional effects we can next plot the Bayesian network that describes the connections between nutrients and their responses. (Beta and b nodes in PGM)
 
 - Local distributions are estimated with Stan and values of the parameters are gathered as a Bayesian network
 - This enables us to look at the joint probability as a whole
-  - Principal components as a graph visualization (TIKZ)
+  - Principal components as a graph visualization 
   -- This shows the population effects
-  
-- We can query the graph for all the sigma_b-nodes that represent variation of the effect between persons
-- Effects are sorted by magnitude and confidence
 
-- Clustering: 
-  -- This shows latent intermediate grouping
-  - We can explore the personal effects by seeking clusters of similarly reacting patients. Intuition is that not everyone is   reacting individually, but there might be groups of similarly reacting patients that we are not currently aware of.
-  
-    - Clusters of personal effects verying from average levels
-    - Clusters of absolute personal effects
-  
-    - Can these clusters be matched to genes?
-  
-    - Note that this grouping is now found by post estimation analysis, but these groups might be found also during the     estimation
-
-- Finally, personal level predictions
-
-
-### Principal components as graph visualiation
-
-# TODO: TIKZ Network
-
-```{r}
-
-```
-
-
-After finding a reasonable fit, we can analyze the principal components that explain the variation.
-
-```{r, echo=TRUE, message=TRUE}
-sysdimet_visgraph <- mebn.visualization_graph(sysdimet_gamma_ar1)
-
-# Filter only the most significant edges having large typical effect or large personal variance
-alledges <- E(sysdimet_visgraph)
-top_neg_edges <- head(alledges[order(alledges$weight)], 20)
-top_pos_edges <- head(alledges[order(-alledges$weight)], 20)
-top_pers_edges <- head(alledges[order(-alledges$b_sigma)], 20)
-
-# Comment out this row to see all the connections at the model
-sysdimet_visgraph <- delete.edges(sysdimet_visgraph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
-
-V(sysdimet_visgraph)$size = 20 # MEBN size = 1 !!
-
-bipa <- layout_as_bipartite(sysdimet_visgraph, types = V(sysdimet_visgraph)$type == "200", vgap = 50)
-
-E(sysdimet_visgraph)$color="red"
-E(sysdimet_visgraph)[E(sysdimet_visgraph)$weight < 0]$color="blue"
-
-# Idea: make own edge for personal variance to visualization graph
-
-#plot(sysdimet_visgraph, shape="circle", layout=bipa, xlim=c(-10,10), ylim=c(-10,10), rescale=FALSE)
-plot(sysdimet_visgraph, shape="circle", layout=bipa, rescale=TRUE)
-
+```{r, typical_effects_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+source("mebn/MEBN.r")
+mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 
 ```
 
 ## Inference
 
-Rest of the notebook consideres the inference that we can do with previously estimated mixed-effect bayesian network.
+- We can query the graph for all the sigma_b-nodes that represent variation of the effect between persons
+- Effects are sorted by magnitude and confidence
 
-First we do exploration over the whole sample population for finding clusters of similarly behaving patients. Then in the last part we show how we can predict personal nutritional effects for individual patients.
+```{r, echo=TRUE, eval=TRUE}
+# Query the graph for personal variances, denoted by b_sigma-nodes
+allnodes <- V(sysdimet_gamma_ar1)
+b_sigma <- allnodes[allnodes$type=="b_sigma"]
 
-TODO: tämän läpikäynnin voisi tehdä verkon rakennuksen yhteydessä
+# Again, a separate data frame is constructed for printing
+personal_variances<-data.frame(matrix(NA, nrow=length(b_sigma), ncol=0))
 
-```{r ppc, echo=FALSE, eval=FALSE}
-library(rstan)
-library(bayesplot)
-library(ggplot2)
+personal_variances$effect <- unlist(lapply(strsplit(gsub("b_sigma_","", b_sigma$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
 
-theme_set(bayesplot::theme_default())
+personal_variances$variance <- b_sigma$value
+largest_personal_variance <- personal_variances[order(-personal_variances$variance),]
+
+head(largest_personal_variance, 20)
+```
+
+For better undestanding, we can also visualize these personal variances as a graph
+
+```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+source("mebn/MEBN.r")
+mebn.plot_personal_variations(sysdimet_gamma_ar1, 15)
+
+```
+
+
+
+Let us explore these identified personal differences in effects of nutrition. Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
+
+For this analysis we can collect the estimations of personal effects and the can use k-means algorithm to find similarly behaving clusters within patients. Note that now we are using already estimated effects from the whole dataset. In last part, we show the predictive ability of our model and predict personal graphs.
+
+**
+
+
+```{r kmeans_dfs, echo=FALSE, eval=FALSE}
 
 personal_variations_from_mean <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 personal_effects <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 personal_effects_quantiles <- matrix(NA, ncol=3, nrow=106*22*5)
+```
 
-dens_plots <- list()
-i <- 1
+```{r}
+#fsins_gamma_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+#pe <- summary(fsins_gamma_ar1, pars="personal_effect", probs = c(0.25, 0.75))$summary[,c(1,4,5)]
+#pe
+
+```
+
+
+```{r kmeans_dfs, echo=FALSE, eval=FALSE}
 
 for (targetname in assumedtargets$Name)
 {
   target_blmm <- mebn.get_localfit(targetname)
-  true_value <- as.vector(sysdimet[,targetname])
 
-  posterior <- extract(target_blmm, pars = c("Y_rep", "personal_effect", "b", "ar1"))
-  posterior_y_50 <- posterior$Y_rep[1:50,]
-  
-  # Back to original scale 
-  post.rep <- mebn.rescale(posterior_y_50, mean(true_value))
+  posterior <- extract(target_blmm, pars = c("personal_effect", "b"))
 
   b_blmm <- colMeans(posterior$b)
   beta_b_blmm <- colMeans(posterior$personal_effect)
   
-  pe <- summary(target_blmm, pars="personal_effect", probs = c(0.25, 0.75))$summary[,c(1,4,5)]
+  pe <- summary(target_blmm, pars="personal_effect", probs = c(0.05, 0.95))$summary[,c(1,4,5)]
   
   if (i == 1) {
     # variance of the intercept is omitted
@@ -332,16 +318,9 @@ for (targetname in assumedtargets$Name)
     personal_effects_quantiles <- rbind(pe)
   }
 
-  dens_plots[[i]] <- ppc_dens_overlay(true_value, post.rep) + 
-    coord_cartesian(xlim = c(assumedtargets[assumedtargets$Name == targetname,]$ScaleMin,assumedtargets[assumedtargets$Name == targetname,]$ScaleMax)) +
-    ggtitle(targetname)
-  
-  i <- i + 1
 }
 
-bayesplot_grid(plots = dens_plots, legends = FALSE)
 ```
-
 
 
 ## Piileviä reagointitapojen ryhmiä
