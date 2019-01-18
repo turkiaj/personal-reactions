@@ -83,7 +83,7 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 
 **Constructing the graph**
 
-```{r}
+```{r, echo=FALSE}
 initial_normal_graph <- mebn.new_graph_with_randomvariables(datadesc)
 ```
 
@@ -111,7 +111,7 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_normal_graph,
 
 If we now check these initial models of personal blood test responses, we can see that the Gaussian distribution is not a good fit as it allows negative blood test values and does not model the right tail of the true distribution. The estimated model parameters of Gaussian models are still kept as a reference point for further models. Those parameters are the weights of the edges at the Bayesian Network and it is important that all the random variables at the network can work with the same regression coefficients.
 
-```{r normal_model_ppc, echo=FALSE, eval=TRUE}
+```{r normal_model_ppc, echo=FALSE, eval=TRUE, message=FALSE}
 source("mebn/MEBN.r")
 normal_targets <- assumedtargets
 normal_targets$ScaleMin <- -10
@@ -141,32 +141,14 @@ sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph,
 
 ## Checking the fit of the local models
 
-```{r gamma_ppc, echo=FALSE, eval=TRUE}
+```{r gamma_ppc, echo=FALSE, eval=TRUE, message=FALSE}
 mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/", assumedtargets, sysdimet)
 ```
 
+As we see here, the regression coefficients /(beta) are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
+
 ```{r effect_comparison}
-
-# TODO: Make function: mebn.compare_typicals(bn1, bn2) returns this table
-
-# - find beta nodes of both normal and gamma distributions 
-normal_nodes <- V(sysdimet_normal)
-n_beta <- normal_nodes[normal_nodes$type=="beta"]
-
-gamma_nodes <- V(sysdimet_gamma)
-g_beta <- gamma_nodes[gamma_nodes$type=="beta"]
-
-# - construct a table for comparing the estimates
-typical_effects<-data.frame(matrix(NA, nrow=length(n_beta), ncol=0))
-
-typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", n_beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
-
-typical_effects$normal_estimate <- round(n_beta$value,6)
-typical_effects$gamma_estimate <- round(g_beta$value,6)
-
-# we see that typical effects are exactly the same in absolute scale
-typical_effects
-
+mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
 ```
 
 **Comparing different local models with LOO**
@@ -178,7 +160,6 @@ normal_vs_gamma <- mebn.LOO_comparison(assumedtargets, "BLMM_normal", "BLMM_gamm
 normal_vs_gamma
 # https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
-
 
 As the expected log predictive density (ELPD) of gamma model is higher, we should choose that for further development.
 
@@ -198,6 +179,8 @@ sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph,
                                    stan_model_file = "mebn/BLMM_gamma_ar1.stan",
                                    normalize_values = TRUE)
 
+mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_ar1.gexf")
+
 # FSINS and FPLUK-models had undefined values in beta_Intercept and few in C-matrix. Maybe offset-value should be bigger?
 ```
 
@@ -213,6 +196,7 @@ ar0_vs_ar1
 
 
 ```{r, ar1}
+source("mebn/MEBN.r")
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ar1_comparison
   
@@ -245,6 +229,9 @@ mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 - Effects are sorted by magnitude and confidence
 
 ```{r, echo=TRUE, eval=TRUE}
+source("mebn/MEBN.r")
+#sysdimet_gamma_ar1 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") ei lue oikein?
+
 # Query the graph for personal variances, denoted by b_sigma-nodes
 allnodes <- V(sysdimet_gamma_ar1)
 b_sigma <- allnodes[allnodes$type=="b_sigma"]
@@ -255,9 +242,12 @@ personal_variances<-data.frame(matrix(NA, nrow=length(b_sigma), ncol=0))
 personal_variances$effect <- unlist(lapply(strsplit(gsub("b_sigma_","", b_sigma$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
 
 personal_variances$variance <- b_sigma$value
+personal_variances$"CI-10%" <- b_sigma$value_lCI
+personal_variances$"CI-90%" <- b_sigma$value_uCI
+
 largest_personal_variance <- personal_variances[order(-personal_variances$variance),]
 
-head(largest_personal_variance, 20)
+head(largest_personal_variance, 70)
 ```
 
 For better undestanding, we can also visualize these personal variances as a graph
@@ -600,6 +590,28 @@ Temporal material.. remove
 ```
 
 
+```{r}
+remove("models_BLMM_gamma_ar1_fsins_blmm")
+source("mebn/MEBN.r")
+  
+fit  <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90))
+ms
+
+su <- mebn.localsummary(fsins_gamma)
+su$fixef_lCI[21]
+
+                                                value = localsummary$fixef[p], 
+                                                value_lCI = localsummary$fixef_lCI[p],
+                                                value_uCI = localsummary$fixef_uCI[p],
+
+
+```
+
+
+
+
+
 
 ```{r}
 #library("shinystan")
@@ -622,6 +634,8 @@ normal_plot <- plot(fpgluk_normal)
 gamma_plot <- plot(fpgluk_gamma)
 
 bayesplot_grid(plots = list(normal_plot, gamma_plot), legends = FALSE)
+
+summary(fsins_gamma_ar1)
 
 ```
 

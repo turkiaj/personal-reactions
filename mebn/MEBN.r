@@ -215,42 +215,58 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
 
 mebn.localsummary <- function(fit)
 {
-  draws <- extract(fit)
+  #draws <- extract(fit)
   
-  # TODO: get CI from stan
-  #fixef_CI <- apply(draws$beta, 2, quantile, probs = c(0.05, 0.95)) # 2 = by column
+  #  mean      se_mean         sd          10%         90%     n_eff      Rhat
+  ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90))
 
   ModelSummary <- within(list(),
-                         {
-                           intmean     <- mean(draws$beta_Intercept)
-                           fixef       <- colMeans(draws$beta)
-                           fixef_l95CI <- 0
-                           fixef_u95CI <- 0
-                           ranef_sd    <- colMeans(draws$sigma_b)
-                           std_error   <- mean(draws$sigma_e)
-                           Sigma_b     <- colMeans(draws$Sigma_b)
-                           C           <- colMeans(draws$C)
-                         })
+    {
+      intmean       <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[1]
+      intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[4]
+      intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[5]
+      fixef         <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,1]
+      fixef_lCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,4]
+      fixef_uCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,5]
+      ranef_sd      <- round(ms$summary[startsWith(rownames(ms$summary), "sigma_b["),],5)[,1]
+      ranef_sd_lCI  <- round(ms$summary[startsWith(rownames(ms$summary), "sigma_b["),],5)[,4]
+      ranef_sd_uCI  <- round(ms$summary[startsWith(rownames(ms$summary), "sigma_b["),],5)[,5]
+      std_error     <- round(ms$summary[rownames(ms$summary) %in% "sigma_e",],5)[1]
+      std_error_lCI <- round(ms$summary[rownames(ms$summary) %in% "sigma_e",],5)[4]
+      std_error_uCI <- round(ms$summary[rownames(ms$summary) %in% "sigma_e",],5)[5]
+    })
   
   # Create matrix D
-  sdM <- diag(ModelSummary$ranef_sd)
-  ModelSummary$D <- sdM %*% ModelSummary$C %*% t(sdM)
+  #sdM <- diag(ModelSummary$ranef_sd)
+  #ModelSummary$D <- sdM %*% ModelSummary$C %*% t(sdM)
   
   return(ModelSummary)
 }
 
 ##################################################
 
-mebn.get_localfit <- function(target_name, local_model_cache = "models")
+mebn.get_localfit <- function(target_name, local_model_cache = "models", use_memory = TRUE)
 {
   modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
-  print(paste0("Loading ", modelcache))
-  
   localfit <- NULL
   
-  if (file.exists(modelcache))
+  memcache <- gsub("/", "_", modelcache)  
+  memcache <- gsub(".rds", "", memcache)  
+  
+  if (use_memory == TRUE & exists(memcache))
+  {
+    localfit <- get(memcache)
+    print(paste0("Using cached ", memcache))
+  }
+  else if (file.exists(modelcache))
   {
     localfit <- readRDS(modelcache)
+    print(paste0("Loading file ", modelcache))
+    
+    # Set memcache to Global Environment
+    if (use_memory == TRUE) assign(memcache, localfit, 1)
+
+    #print(paste0("Setting memory cache: ", memcache))
   }
   
   return(localfit)
@@ -358,28 +374,24 @@ mebn.AR_comparison <- function(target_variables, graphdir)
   library(rstan)
   
   ar_table<-data.frame(matrix(nrow=nrow(target_variables), ncol=4))
-  colnames(ar_table) <- c("distribution", "AR1", "CI95l", "CI95u")
+  colnames(ar_table) <- c("distribution", "AR(1)", "CI-10%", "CI-90%")
   
   n <- 1
   for (targetname in target_variables$Name)
   {
     m1 <- mebn.get_localfit(paste0(graphdir, "/", targetname))
-    m1_extract <- extract(m1, pars = c("ar1"))
     
     c2 <- "NA"
     c3 <- "NA"
     c4 <- "NA"
-
-    #if (exists("m1_extract$ar1"))
-    #{
-      c2 <- mean(m1_extract$ar1)
-      # TODO: CI      
-    #}
     
+    s1 <- summary(m1, pars=c("ar1"), probs=c(0.10, 0.90))
+    #m1_extract <- extract(m1, pars = c("ar1"))
+  
     ar_table[n,1] <- targetname
-    ar_table[n,2] <- c2
-    ar_table[n,3] <- c3
-    ar_table[n,4] <- c3
+    ar_table[n,2] <- round(s1$summary[1],5)
+    ar_table[n,3] <- round(s1$summary[4],5)
+    ar_table[n,4] <- round(s1$summary[5],5)
     n <- n + 1
   }
   
@@ -490,82 +502,10 @@ mebn.get_rootnodes <- function(g)
 
 ##################################################
 
-mebn.predict_graph <- function(reaction_graph, personal_data, alldata, predictor_columns, assumed_targets, local_model_cache = "models", edge_significance_test)
-{
-  predictor_names <- as.vector(predictor_columns$Name)
-  new_input <- subset(personal_data, select = predictor_names)
-  
-  for (c in 1:dim(assumed_targets)[1])
-  {
-    target_column <- assumed_targets[c,]
-    target_name <- as.vector(target_column$Name)
-    
-    localfit <- mebn.get_localfit(target_name, local_model_cache)
-    
-    if (is.null(localfit))
-    {
-      stop(paste0("Local model for ", target_name, " not found in '", local_model_cache, "'"))
-    }
-      
-    localsummary <- mebn.localsummary(localfit)
-    new_response <- subset(personal_data, select = target_name)
-  
-    # Predict random-effects with BLUP
-    ranefs <- mebn.predict_ranefs(localsummary, new_input, new_response)
-  
-    # Get variances of BLUP, i.e. prediction errors
-    localparams <- mebn.set_model_parameters(assumedpredictors, assumedtargets, "notinuse", alldata, TRUE, TRUE)
-    err <- mebn.ranef_BLUP_vars(localparams, localsummary)
-    ranef_BLUP_vars <- err$var_BLUP
-    
-    # - Loop through betas for current target
-    for (p in 1:length(predictor_names))
-    {
-      predictor_name <- predictor_names[p]
-      
-      predicted_coef <- localsummary$fixef[p] + ranefs[p+1]
-      prediction_error <- ranef_BLUP_vars[p]
-      
-      if (edge_significance_test(predicted_coef) == TRUE)
-      {
-        # Muutettu confband-kaari n?ytt?m??n betan vahvuutta ja CI esitt?? henk.koht. vaihtelua
-        
-        reaction_graph <- reaction_graph + edge(c(predictor_name, target_name), 
-                                                weight = predicted_coef, 
-                                                shape   = "confband", 
-                                                mean   = predicted_coef,
-                                                l95CI  = prediction_error/2,
-                                                u95CI  = prediction_error/2)
-        
-        # Add random-effect for significant predictors
-        #reaction_graph <- reaction_graph + vertex(paste0("b_", predictor_name, "_", target_name), label=paste0("b_", predictor_name), color="#AAAAAA", size = 0.5, shape = "disc")
-        #reaction_graph <- reaction_graph + vertex(paste0("b_sigma_", predictor_name, "_", target_name), label="b_sigma", color="#AAAAAA", size = localsummary$ranef_sd[p], shape = "disc")
-        
-        #reaction_graph <- reaction_graph + edge(paste0("b_sigma_", predictor_name, "_", target_name), paste0("b_", predictor_name, "_", target_name), shape = "arrow", weight = localsummary$ranef_sd[p]) 
-        #reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight=1)
-      }
-      else
-      {
-        #print(paste0("pruning out edge ", predictor_name, "->", target_name))
-      }
-    }
-    
-  } # loop targets
-  
-  return(reaction_graph)
-}
-
-##################################################
-
-mebn.write_gexf <- function(reaction_graph, gexf_path = "C:\\projects\\Responses\\reactions.gexf")
+mebn.write_gexf <- function(reaction_graph, gexf_path)
 {
   require(rgexf)
-  
-  # TODO: https://github.com/jacomyal/sigma.js/wiki/Settings
-  
-  # - hover descriptions for nodes (current vs bounds) 
-  # - beta-weights to edges and labels?
-  
+
   MakeRGBA <- function(RGBstring, alpha)
   {
     strtodec <- function(rgb, b, e) { strtoi(paste0("0x", substr(rgb, b, e))) }
@@ -581,33 +521,43 @@ mebn.write_gexf <- function(reaction_graph, gexf_path = "C:\\projects\\Responses
   nodeviz <- list(color = MakeRGBA(V(reaction_graph)$color, 1.0), size = V(reaction_graph)$size, shape = V(reaction_graph)$shape)
   edgeviz <- list(shape = E(reaction_graph)$shape)
   
-  edgesatt <- data.frame(E(reaction_graph)$mean, E(reaction_graph)$l95CI, E(reaction_graph)$u95CI, E(reaction_graph)$b_sigma)
+  edgesatt <- data.frame(E(reaction_graph)$value, E(reaction_graph)$value_lCI, E(reaction_graph)$value_uCI, E(reaction_graph)$b_sigma, E(reaction_graph)$b_sigma_lCI, E(reaction_graph)$b_sigma_uCI)
   
-  if (length(edgesatt) == 4)
+  if (length(edgesatt) == 6)
   {
-    colnames(edgesatt) <- c("mean", "l95CI", "u95CI", "b_sigma")
+    colnames(edgesatt) <- c("value", "value_lCI", "value_uCI", "b_sigma", "b_sigma_lCI", "b_sigma_uCI")
   }
   
-  nodesatt <- data.frame(V(reaction_graph)$mean, V(reaction_graph)$l95CI, V(reaction_graph)$u95CI, V(reaction_graph)$scalemin, V(reaction_graph)$scalemax)
-  if (length(nodesatt) == 5)  
+  nodesatt <- data.frame(V(reaction_graph)$value, V(reaction_graph)$value_lCI, V(reaction_graph)$value_uCI)
+  if (length(nodesatt) == 3)  
   {
-    colnames(nodesatt) <- c("mean", "l95CI", "u95CI", "scalemin", "scalemax")
+    colnames(nodesatt) <- c("value", "value_lCI", "value_uCI")
   }
   
-  edgelabels <- data.frame(paste0("beta = ", round(E(reaction_graph)$mean, 3), ", b_sigma = ", round(2*(E(reaction_graph)$u95CI - E(reaction_graph)$mean), 3)))
+  #edgelabels <- data.frame(paste0("beta = ", round(E(reaction_graph)$mean, 3), ", b_sigma = ", round(2*(E(reaction_graph)$uCI - E(reaction_graph)$mean), 3)))
   
   write.gexf(
     defaultedgetype = "directed",
     nodes = data.frame(V(reaction_graph)$name, V(reaction_graph)$label),
     edges = get.edgelist(reaction_graph),
     edgesWeight = graphdata[,3],
-    edgesLabel = edgelabels,
+    #edgesLabel = edgelabels,
     nodesVizAtt = nodeviz,
     edgesVizAtt = edgeviz,
     edgesAtt = edgesatt,
     nodesAtt = nodesatt,
     output = gexf_path
   )
+}
+
+###################################
+
+mebn.read_gexf <- function(gefx_path)
+{
+  gexf_graph <- read.gexf(gefx_path)
+  ig <- rgexf::gexf.to.igraph(gexf_graph)
+  
+  return(ig)
 }
 
 ###################################
@@ -656,17 +606,21 @@ mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, a
       # Attach the random variable
       reaction_graph <- reaction_graph + edge(c(predictor_name, target_name), 
                                               weight = localsummary$fixef[p], 
-                                              b_sigma = localsummary$ranef_sd[p+1],
-                                              shape   = "confband", 
-                                              mean   = localsummary$fixef[p])
-      
+                                              value = localsummary$fixef[p], 
+                                              value_lCI = localsummary$fixef_lCI[p],
+                                              value_uCI = localsummary$fixef_uCI[p],
+                                              b_sigma = localsummary$ranef_sd[p],
+                                              b_sigma_lCI = localsummary$ranef_sd_lCI[p],
+                                              b_sigma_uCI = localsummary$ranef_sd_uCI[p],
+                                              shape   = "confband")
+
       # Fixed-effect
       reaction_graph <- reaction_graph + vertex(paste0("beta_", predictor_name, "_", target_name), 
                                                 label=paste0("beta_", predictor_name), 
-                                                type="beta", color="#AAAAAA", 
+                                                type="beta", 
                                                 value = localsummary$fixef[p], 
-                                                value_l95CI = localsummary$fixef_l95CI[p],
-                                                value_u95CI = localsummary$fixef_u95CI[p],
+                                                value_lCI = localsummary$fixef_lCI[p],
+                                                value_uCI = localsummary$fixef_uCI[p],
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("beta_", predictor_name, "_", target_name), paste0("beta_", predictor_name, "_", target_name), shape = "arrow", weight = 1, type = "beta") 
@@ -675,20 +629,31 @@ mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, a
       reaction_graph <- reaction_graph + vertex(paste0("b_", predictor_name, "_", target_name), 
                                                 label=paste0("b_", predictor_name), 
                                                 type="b", 
-                                                color="#AAAAAA", 
+                                                value = 0, 
+                                                value_lCI = 0,
+                                                value_uCI = 0,
                                                 size = 0.5, 
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + vertex(paste0("b_sigma_", predictor_name, "_", target_name), 
                                                 label="b_sigma", 
                                                 type="b_sigma", 
-                                                color="#AAAAAA", 
                                                 value = localsummary$ranef_sd[p],
+                                                value_lCI = localsummary$ranef_sd_lCI[p],
+                                                value_uCI = localsummary$ranef_sd_uCI[p],
                                                 size = localsummary$ranef_sd[p], 
                                                 shape = "circle")
       
-      reaction_graph <- reaction_graph + edge(paste0("b_sigma_", predictor_name, "_", target_name), paste0("b_", predictor_name, "_", target_name), shape = "arrow", weight = localsummary$ranef_sd[p], type = "b_sigma") 
-      reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight=1, type = "b")
+      reaction_graph <- reaction_graph + edge(paste0("b_sigma_", predictor_name, "_", target_name), 
+                                              paste0("b_", predictor_name, "_", target_name), 
+                                              shape = "arrow", 
+                                              weight = localsummary$ranef_sd[p], 
+                                              type = "b_sigma")
+      
+      reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), 
+                                              target_name, shape = "arrow", 
+                                              weight=1, 
+                                              type = "b")
     }
     
   } # loop targets
@@ -735,8 +700,8 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
                                                 label=paste0("personal_", predictor_name), 
                                                 type="personal", color="#AAAAAA", 
                                                 value = beta_b_blmm[person_id,p], 
-                                                value_l95CI = 0,
-                                                value_u95CI = 0,
+                                                value_lCI = 0,
+                                                value_uCI = 0,
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("personal_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "personal") 
@@ -746,8 +711,8 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
                                                 label=paste0("b_", predictor_name), 
                                                 type="b", color="#AAAAAA", 
                                                 value = b_blmm[person_id,p], 
-                                                value_l95CI = 0,
-                                                value_u95CI = 0,
+                                                value_lCI = 0,
+                                                value_uCI = 0,
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "b") 
@@ -905,6 +870,28 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
        vertex.label.cex=1,
        edge.arrow.size=1,
        edge.arrow.width=1)
+}
+
+##################################################
+
+mebn.compare_typicals <- function(bn1, bn2)
+{
+  # - find beta nodes of both normal and gamma distributions 
+  normal_nodes <- V(bn1)
+  n_beta <- normal_nodes[normal_nodes$type=="beta"]
+  
+  gamma_nodes <- V(bn2)
+  g_beta <- gamma_nodes[gamma_nodes$type=="beta"]
+  
+  # - construct a table for comparing the estimates
+  typical_effects<-data.frame(matrix(NA, nrow=length(n_beta), ncol=0))
+  
+  typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", n_beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+  
+  typical_effects$model1 <- round(n_beta$value,6)
+  typical_effects$model2 <- round(g_beta$value,6)
+  
+  return(typical_effects)
 }
 
 ##################################################
