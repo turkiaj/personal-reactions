@@ -874,6 +874,44 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
 
 ##################################################
 
+mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, keep_only_effects)
+{
+  # Build effect names
+  cluster_data$predictor <- rep(assumedpredictors[feature_index,]$Description,nrow(assumedtargets))
+  cl <- rep(1,length(feature_index)) # number of predictors
+  t_idx <- c(cl,cl+1,cl+2,cl+3,cl+4) # predictors x targets
+  cluster_data$response <- assumedtargets$Description[t_idx]
+  effect_levels <- paste0(cluster_data$predictor," -> ", cluster_data$response)
+  cluster_data$effect <- factor(effect_levels, levels=effect_levels)
+  
+  # Plot only those effects that showed previously personal variance 
+  cluster_data.filtered <- cluster_data[cluster_data$effect %in% keep_only_effects$effect,]
+  
+  # Prepare data from plotting 
+  plot_data <- cluster_data.filtered[c("effect")]
+  plot_data$amount <- cluster_data.filtered$'1'
+  plot_data$cluster <- 1
+  
+  for (i in c(2:k))
+  {
+    temp_data <- cluster_data.filtered[c("effect")]
+    temp_data$amount <- cluster_data.filtered[as.character(i)][,]
+    temp_data$cluster <- i
+    
+    plot_data <- rbind(plot_data, temp_data)
+  }
+  
+  plot_data$below_above <- ifelse(plot_data$amount < 0, "below", "above")
+  
+  ggplot(plot_data, aes(x=effect, y=amount)) + 
+    geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
+    coord_flip() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+    facet_wrap(~cluster)
+}
+
+##################################################
+
 mebn.compare_typicals <- function(bn1, bn2)
 {
   # - find beta nodes of both normal and gamma distributions 
