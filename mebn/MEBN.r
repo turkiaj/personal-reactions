@@ -148,7 +148,7 @@ mebn.scale_gaussians <- function(r, data, datadesc)
 
 ##################################################
 
-mebn.set_model_parameters <- function(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params = NULL)
+mebn.set_model_parameters <- function(predictor_columns, target_column, group_column, inputdata, targetdata = NULL, normalize_values, reg_params = NULL)
 {
   ident <- function(x) { return (x) }
   predictors <- inputdata[as.vector(predictor_columns$Name)]
@@ -170,6 +170,20 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
     dim(prior_mean) <- length(prior_mean)
   }
   
+  use_holdout_data <- 0
+  N_new <- 0
+  X_new <- matrix(NA, nrow=0, ncol=ncol(assumedpredictors))
+  Y_new <- c()
+  J_new <- 0
+  Z_new <- 0
+  
+  if (!is.null(targetdata))
+  {
+    use_holdout_data <- 1
+    N_new <- nrow(targetdata)
+    J_new <- length(levels(targetdata[[group_column]]))
+  }
+  
   # Scale if the predictor is Gaussian
   N <- nrow(inputdata)
   
@@ -184,11 +198,32 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
     #Y <- mebn.scale(inputdata[target_name], sd(inputdata[target_name][,]))[,]  
     #Y <- mebn.normalize(inputdata[target_name], min(inputdata[target_name][,]), max(inputdata[target_name][,]))[,]  
     Y <- inputdata[target_name][,]
+    
+    # Prepare training data also
+    if (use_holdout_data == 1)
+    {
+      # note: X_new does not need intercept column
+      X_new <- sapply(1:nrow(assumedpredictors), mebn.scale_gaussians, data = targetdata, datadesc = assumedpredictors)
+      Y_new <- targetdata[target_name][,]
+      
+      # but Z_new does
+      Z_new <- cbind(rep(1,N_new), X_new)
+    }
   }
   else
   {
     X <- cbind(rep(1,N), apply(predictors, 2, ident))
     Y <- inputdata[target_name][,]
+    
+    if (use_holdout_data == 1)
+    {
+      # note: X_new does not need intercept column
+      X_new <- apply(predictors, 2, ident)
+      Y_new <- targetdata[target_name][,]
+      
+      # but Z_new does
+      Z_new <- cbind(rep(1,N_new), X_new)
+    }    
   }
 
   params <- within(list(),
@@ -200,9 +235,16 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
                      X_prior_sigma <- prior_sigma    # no prior for the intercept 
                      X_prior_mean <- prior_mean      # sigma < 0 means noninformative prior
                      Y <- Y
-                     Z <- X                      
+                     Z <- X     
+                     N_new <- N_new
+                     X_new <- X_new
+                     Z_new <- Z_new
+                     Y_new <- Y_new
+                     predict_with_holdout <- use_holdout_data
                      J <- length(levels(inputdata[[group_column]]))
+                     J_new <- J_new
                      group <- as.integer(inputdata[[group_column]])
+                     group_new <- as.integer(targetdata[[group_column]])
                      offset <- 15
                    })
   
@@ -437,7 +479,7 @@ mebn.target_dens_overlays <- function(localfit_directory, target_variables, data
 
 ##################################################
 
-mebn.sampling <- function(inputdata, predictor_columns, target_column, group_column, local_model_cache = "models", stan_mode_file = "BLMM.stan", normalize_values = TRUE, reg_params = NULL)
+mebn.sampling <- function(inputdata, targetdata, predictor_columns, target_column, group_column, local_model_cache = "models", stan_mode_file = "BLMM.stan", normalize_values = TRUE, reg_params = NULL)
 {
   require(rstan)
   
@@ -452,7 +494,7 @@ mebn.sampling <- function(inputdata, predictor_columns, target_column, group_col
   # Use cached model if it exists
   if (is.null(localfit))
   {
-    stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
+    stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, targetdata, normalize_values, reg_params)
 
     initlist <- list(list(beta_Intercept=50),list(beta_Intercept=2),list(beta_Intercept=2),list(beta_Intercept=2))    
     localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=0, control = list(adapt_delta = 0.80, max_treedepth = 12))
@@ -467,7 +509,7 @@ mebn.sampling <- function(inputdata, predictor_columns, target_column, group_col
 
 ##################################################
 
-mebn.variational_inference <- function(inputdata, predictor_columns, target_column, group_column, local_model_cache = "models", stan_mode_file = "BLMM.stan", normalize_values = TRUE, reg_params = NULL)
+mebn.variational_inference <- function(inputdata, targetdata, predictor_columns, target_column, group_column, local_model_cache = "models", stan_mode_file = "BLMM.stan", normalize_values = TRUE, reg_params = NULL)
 {
   require(rstan)
   
@@ -482,7 +524,7 @@ mebn.variational_inference <- function(inputdata, predictor_columns, target_colu
   # Use cached model if it exists
   if (is.null(localfit))
   {
-    stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, normalize_values, reg_params)
+    stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, targetdata, normalize_values, reg_params)
     localmodel <- stan_model(file = stan_mode_file)
     localfit <- vb(localmodel, data=stanDat, output_samples=2500, iter=10000)
     
@@ -584,14 +626,14 @@ mebn.PersonalSignificanceTest <- function(personal_coef)
 
 ##################################################
 
-mebn.bipartite_model <- function(reaction_graph, inputdata, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
+mebn.bipartite_model <- function(reaction_graph, inputdata, targetdata, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
 {
   for (c in 1:dim(assumed_targets)[1])
   {
     target_column <- assumed_targets[c,]
     target_name <- as.vector(target_column$Name)
     
-    localfit <- local_estimation(inputdata, predictor_columns, target_column, group_column, local_model_cache, stan_model_file, normalize_values, reg_params)
+    localfit <- local_estimation(inputdata, targetdata, predictor_columns, target_column, group_column, local_model_cache, stan_model_file, normalize_values, reg_params)
     
     # Extract model summary
     localsummary <- mebn.localsummary(localfit)
