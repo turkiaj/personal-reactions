@@ -1,0 +1,311 @@
+---
+title: "Revealing the Personal Effects of Nutrition with Mixed-Effect Bayesian Network"
+author:
+- Jari Turkia, jari.turkia@cgi.com
+- University of Eastern Finland
+bibliography: biblio.bib
+output:
+  html_document: default
+  pdf_document: default
+abstract: This notebook describes the implementation of the modelling method and the experimental analysis that is described in the main article.
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+
+# this allows using tikz rendering for plots with "dev=tikz"
+knit_hooks$set(plot = function(x, options) {
+  if ('tikz' %in% options$dev && !options$external) {
+    hook_plot_tex(x, options)
+  } else hook_plot_md(x, options)
+})
+
+# Load common MEBN package
+source("mebn/MEBN.r")
+```
+
+## Data analysis
+
+Rest of the notebook consideres the inference that we can do with previously estimated mixed-effect bayesian network.
+
+First we do exploration over the whole sample population for finding clusters of similarly behaving patients. Then in the last part we show how we can predict personal nutritional effects for individual patients.
+
+## Principal components as graph visualiation
+
+Local distributions seem to have reasonable good fit. For better overall insight to nutritional effects we can next plot the Bayesian network that describes the connections between nutrients and their responses. (Beta and b nodes in PGM)
+
+- Local distributions are estimated with Stan and values of the parameters are gathered as a Bayesian network
+- This enables us to look at the joint probability as a whole
+  - Principal components as a graph visualization 
+  -- This shows the population effects
+
+```{r, typical_effects_figure, fig.height = 7, fig.width = 7, fig.align = "center", message=FALSE, warning=FALSE}
+mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
+
+```
+
+## Inference
+
+- We can query the graph for all the sigma_b-nodes that represent variation of the effect between persons
+- Effects are sorted by magnitude and confidence
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+#sysdimet_gamma_ar1 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") ei lue oikein?
+
+# Query the graph for personal variances, denoted by b_sigma-nodes
+allnodes <- V(sysdimet_gamma_ar1)
+b_sigma <- allnodes[allnodes$type=="b_sigma"]
+
+# Again, a separate data frame is constructed for printing
+personal_variances<-data.frame(matrix(NA, nrow=length(b_sigma), ncol=0))
+
+personal_variances$effect <- unlist(lapply(strsplit(gsub("b_sigma_","", b_sigma$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+
+personal_variances$variance <- b_sigma$value
+personal_variances$"CI-10%" <- b_sigma$value_lCI
+personal_variances$"CI-90%" <- b_sigma$value_uCI
+
+ordered_personal_variance <- personal_variances[order(-personal_variances$variance),]
+
+head(ordered_personal_variance, 40)
+```
+
+Let us examine closer those of the effects that have most probable variance over 0.10
+
+```{r number_of_varying_effects, message=FALSE, warning=FALSE}
+effects_with_most_variance <- ordered_personal_variance[ordered_personal_variance$variance >= 0.30,]
+number_of_varying_effects <- nrow(effects_with_most_variance)
+number_of_varying_effects
+```
+
+For better undestanding, we can also visualize these personal variances as a graph
+
+```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
+```
+
+Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
+
+For an effective overview, we gather all personal effects and personal variations from the local distributions of the graph
+
+```{r effects_with_most_variance, message=FALSE, warning=FALSE}
+effects_with_most_variance
+```
+
+We can now take the personal estimations of the effects and see, if they form clusters
+
+```{r kmeans_dfs, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE}
+library(rstan)
+
+# Pick these predictors as features for clustering -- get all
+feature_index <- c(1:nrow(assumedpredictors))
+# - and discard these
+#feature_index <- feature_index[-c(match("sukupuoli", assumedpredictors$Name), 
+#                                  match("kolestrolilaakitys", assumedpredictors$Name))]
+
+personal_variations_from_mean <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+personal_effects <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+
+modelcache <- "BLMM_gamma/ar1/"
+
+# We could fetch a personal graph for all patients, but it is more effective to extract estimations directly from MCMC-samples to data frames
+
+# TODO: assumedtargets could be narrowed down to cluster_targets..
+
+for (i in c(1:nrow(assumedtargets)))
+{
+  targetname <- as.vector(assumedtargets[i,]$Name)
+  
+  target_blmm <- mebn.get_localfit(paste0(modelcache,targetname))
+  posterior <- extract(target_blmm, pars = c("personal_effect", "b"))
+
+  b_blmm <- colMeans(posterior$b)
+  beta_b_blmm <- colMeans(posterior$personal_effect)
+  
+  # Omit predictor columns here, if needed
+  # - b has intercept as first column, so the index needs to be adjusted
+  b_blmm <- b_blmm[,feature_index+1] 
+  beta_b_blmm <- beta_b_blmm[,feature_index] 
+  
+  if (i == 1) {
+    # variance of the intercept is omitted
+    personal_variations_from_mean <- b_blmm
+    personal_effects <- beta_b_blmm
+  }
+  else
+  {
+    personal_variations_from_mean <- cbind(personal_variations_from_mean, b_blmm)
+    personal_effects <- cbind(personal_effects, beta_b_blmm)
+  }
+}
+
+```
+
+## Latent grouping
+
+```{r, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE}
+library(stats)
+library(gridExtra)
+
+k.max <- 8
+wss_effects <- sapply(1:k.max, function(k){kmeans(personal_effects, k, nstart=50, iter.max = 15)$tot.withinss})
+wss_vars <- sapply(1:k.max, function(k){kmeans(personal_variations_from_mean, k, nstart=50, iter.max = 15)$tot.withinss})
+
+df_vars <- data.frame(x = 1:k.max, y = wss_vars)
+df_effects <- data.frame(x = 1:k.max, y = wss_effects)
+
+plot1 <- ggplot(data=df_effects, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Difference in absolute reaction") +
+  xlab("Number of clusters") +
+  ylab("Difference between clusters")
+
+plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Difference from typical behavior") +
+  xlab("Number of clusters") +
+  ylab("Difference between clusters")
+
+gridExtra::grid.arrange(plot1,plot2,nrow=1)
+```
+
+### Difference from typical behavior
+  
+By looking previous diagram we see that there are four clearly identifiable groups between patients. At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
+
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10, message=FALSE, warning=FALSE}
+# Number of cluster centers 
+k <- 4
+
+# Clustering using k-means
+km <- kmeans(personal_variations_from_mean, centers = k)
+
+# Every patient can be assigned to some cluster based on how their reactions differ from average
+sysdimet$variation_group <- km$cluster 
+
+# Plot the clusters
+variations_data <- as.data.frame(t(km$centers))
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
+```
+
+Cholesterol medication pops out
+
+Let's see how the clustering shows with absolute effects rather than difference from mean
+
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10, message=FALSE, warning=FALSE}
+
+# Number of cluster centers 
+k <- 4
+
+# Clustering using k-means
+km <- kmeans(personal_effects, centers = k)
+
+# Every patient can be assigned to some cluster also based on how their personal reactions types
+
+# - repeat same cluster placement for all the observations of same patient
+observations_per_patient <- 4
+sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient)) 
+
+# Plot the clusters
+variations_data <- as.data.frame(t(km$centers))
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
+```
+
+The rising effect of cholesterol medication to blood insulin seems to be dominating these clusters. Let's create a cross tabulation to explore this effect more closely.
+
+```{r cholmed_crosstab, message=FALSE, warning=FALSE}
+
+table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
+
+```
+
+Persons in clusters 1 and 4 are taking cholesterol medications, and for them it seems to rise cholesterol levels.
+
+TODO: Plot insulin levels of groups?
+
+Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
+
+```{r}
+feature_index <- feature_index[-c(match("sukupuoli", assumedpredictors$Name), 
+                                  match("kolestrolilaakitys", assumedpredictors$Name))]
+
+
+
+```
+
+Number of clusters with nutritional effects only
+
+```{r, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE}
+library(stats)
+library(gridExtra)
+
+k.max <- 8
+wss_effects <- sapply(1:k.max, function(k){kmeans(personal_effects, k, nstart=50, iter.max = 15)$tot.withinss})
+wss_vars <- sapply(1:k.max, function(k){kmeans(personal_variations_from_mean, k, nstart=50, iter.max = 15)$tot.withinss})
+
+df_vars <- data.frame(x = 1:k.max, y = wss_vars)
+df_effects <- data.frame(x = 1:k.max, y = wss_effects)
+
+plot1 <- ggplot(data=df_effects, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Difference in absolute reaction") +
+  xlab("Number of clusters") +
+  ylab("Difference between clusters")
+
+plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
+  geom_line() +
+  geom_point() + 
+  ggtitle("Difference from typical behavior") +
+  xlab("Number of clusters") +
+  ylab("Difference between clusters")
+
+gridExtra::grid.arrange(plot1,plot2,nrow=1)
+```
+
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10, message=FALSE, warning=FALSE}
+
+# Number of cluster centers 
+k <- 4
+
+# Clustering using k-means
+km <- kmeans(personal_variations_from_mean, centers = k)
+
+# Every patient can be assigned to some cluster based on how their reactions differ from average
+sysdimet$variation_group <- km$cluster 
+
+# Plot the clusters
+variations_data <- as.data.frame(t(km$centers))
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
+```
+
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+
+# Number of cluster centers 
+k <- 4
+
+# Clustering using k-means
+km <- kmeans(personal_effects, centers = k)
+
+# Every patient can be assigned to some cluster also based on how their personal reactions types
+
+# - repeat same cluster placement for all the observations of same patient
+observations_per_patient <- 4
+sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient)) 
+
+# Plot the clusters
+variations_data <- as.data.frame(t(km$centers))
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
+```
+
+```{r cholmed_crosstab, message=FALSE, warning=FALSE}
+
+table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
+
+```
