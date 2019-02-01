@@ -528,6 +528,7 @@ shrinkage_parameters <- within(list(),
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. First contains 4/5 of the data and the latter 1/5. We gather the predictions later to asses the prediction performance.
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+library(loo)
 source("mebn/MEBN.r")
 remove("models_BLMM_gamma_ar1_pred_1_fshdl_blmm")
 
@@ -537,6 +538,8 @@ folds <- seq(1,5)
 
 # index of holdout partition (TODO: loop)
 h <- 1
+
+fold5_indexes <- kfold_split_stratified(K = 5, x = sysdimet$SUBJECT_ID)
 
 holdout_idx <- fold5_indexes %in% h
 training_idx <- fold5_indexes %in% folds[-h]
@@ -595,6 +598,24 @@ ggtitle("Veren HDL-kolestrolin ennuste")
 
 ```
 
+Bayes R2
+
+```{r}
+
+# Andrew Gelman, Ben Goodrich, Jonah Gabry, and Aki Vehtari (2018). R-squared for Bayesian regression models. The American Statistician
+# https://doi.org/10.1080/00031305.2018.1549100
+# https://avehtari.github.io/bayes_R2/bayes_R2.html (supplement notebook)
+
+bayes_R2 <- function(y, ypred) {
+  e <- -1 * sweep(ypred, 2, y)
+  var_ypred <- apply(ypred, 1, var)
+  var_e <- apply(e, 1, var)
+  var_ypred / (var_ypred + var_e)
+}
+
+R2 <- bayes_R2(fshdl.true, na.omit(pred_post$Y_pred))
+print(median(R2))
+```
 
 
 And then we test again how the shrinked model fits, and does its predictive score improve from non-shrinked model 
@@ -610,6 +631,8 @@ assumedtargets <- assumedtargets[assumedtargets$Name=="fshdl",]
 nonrhs_vs_rhs <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/ar1_pred/1", "BLMM_gamma/ar1_rhs_pred/1")
 nonrhs_vs_rhs
 ```
+
+
 
 
 
