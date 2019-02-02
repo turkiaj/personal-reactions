@@ -12,7 +12,7 @@ abstract: This notebook describes the implementation of the modelling method and
 
 ```{r setup, include=FALSE}
 library(knitr)
-knitr::opts_chunk$set(echo = TRUE, fig.align="center", cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 
 # this allows using tikz rendering for plots with "dev=tikz"
 knit_hooks$set(plot = function(x, options) {
@@ -106,6 +106,7 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_normal_graph,
 If we now check these initial models of personal blood test responses, we can see that the Gaussian distribution is not a good fit as it allows negative blood test values and does not model the right tail of the true distribution. The estimated model parameters of Gaussian models are still kept as a reference point for further models. Those parameters are the weights of the edges at the Bayesian Network and it is important that all the random variables at the network can work with the same regression coefficients.
 
 ```{r normal_model_ppc, echo=FALSE, eval=TRUE, message=FALSE, cache=TRUE}
+source("mebn/MEBN.r")
 normal_targets <- assumedtargets
 normal_targets$ScaleMin <- -10
 normal_targets$ScaleMax <- 50
@@ -141,8 +142,7 @@ mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/", assumedtargets, sys
 As we see here, the regression coefficients /(beta) are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
 
 ```{r effect_comparison}
-beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
-head(beta_coefs)
+# mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
 ```
 
 **Comparing different local models with LOO**
@@ -188,7 +188,7 @@ ar0_vs_ar1
 ```{r ar1_comparison, message=FALSE, warning=FALSE, cache=TRUE}
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ar1_comparison
-   
+  
 ```
 
 #Principal components as graph visualiation
@@ -207,7 +207,16 @@ mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 
 #Probabilistic graphical model
 
-Our MEBN functions extract a propabilistic graphical model from local distributions estimated with Stan. We can us this PGM to analysis. 
+We have no
+
+
+
+
+
+
+#######################
+
+## Inference
 
 - We can query the graph for all the sigma_b-nodes that represent variation of the effect between persons
 - Effects are sorted by magnitude and confidence
@@ -236,18 +245,27 @@ head(ordered_personal_variance, 40)
 
 Let us examine closer those of the effects that have most probable variance over 0.10
 
-```{r number_of_varying_effects}
+```{r}
 effects_with_most_variance <- ordered_personal_variance[ordered_personal_variance$variance >= 0.30,]
 number_of_varying_effects <- nrow(effects_with_most_variance)
+number_of_varying_effects
 ```
 
 For better undestanding, we can also visualize these personal variances as a graph
 
-```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center"}
+```{r, personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center"}
+source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
 
 Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
+
+For an effective overview, we gather all personal effects and personal variations from the local distributions of the graph
+
+```{r}
+effects_with_most_variance
+```
+
 
 We can now take the personal estimations of the effects and see, if they form clusters
 
@@ -256,13 +274,18 @@ library(rstan)
 
 # Pick these predictors as features for clustering -- get all
 feature_index <- c(1:nrow(assumedpredictors))
+# - and discard these
+#feature_index <- feature_index[-c(match("sukupuoli", assumedpredictors$Name), 
+#                                  match("kolestrolilaakitys", assumedpredictors$Name))]
 
-personal_variations_from_mean <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
-personal_effects <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+personal_variations_from_mean <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
+personal_effects <- matrix(NA, ncol=nrow(assumedpredictors)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 
 modelcache <- "BLMM_gamma/ar1/"
 
 # We could fetch a personal graph for all patients, but it is more effective to extract estimations directly from MCMC-samples to data frames
+
+# TODO: assumedtargets could be narrowed down to cluster_targets..
 
 for (i in c(1:nrow(assumedtargets)))
 {
@@ -327,7 +350,9 @@ gridExtra::grid.arrange(plot1,plot2,nrow=1)
   
 By looking previous diagram we see that there are four clearly identifiable groups between patients. At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
 
-```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+source("mebn/MEBN.r")
+
 # Number of cluster centers 
 k <- 4
 
@@ -339,14 +364,14 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
 ```
 
-Cholesterol medication seems to dominate the clusters
+Cholesterol medication pops out
 
 Let's see how the clustering shows with absolute effects rather than difference from mean
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -363,7 +388,7 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
 ```
 
 The rising effect of cholesterol medication to blood insulin seems to be dominating these clusters. Let's create a cross tabulation to explore this effect more closely.
@@ -385,37 +410,7 @@ feature_index <- feature_index[-c(match("sukupuoli", assumedpredictors$Name),
                                   match("kolestrolilaakitys", assumedpredictors$Name))]
 
 
-personal_variations_from_mean <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
-personal_effects <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), nrow=length(levels(sysdimet$SUBJECT_ID)))
 
-modelcache <- "BLMM_gamma/ar1/"
-
-for (i in c(1:nrow(assumedtargets)))
-{
-  targetname <- as.vector(assumedtargets[i,]$Name)
-  
-  target_blmm <- mebn.get_localfit(paste0(modelcache,targetname))
-  posterior <- extract(target_blmm, pars = c("personal_effect", "b"))
-
-  b_blmm <- colMeans(posterior$b)
-  beta_b_blmm <- colMeans(posterior$personal_effect)
-  
-  # Omit predictor columns here, if needed
-  # - b has intercept as first column, so the index needs to be adjusted
-  b_blmm <- b_blmm[,feature_index+1] 
-  beta_b_blmm <- beta_b_blmm[,feature_index] 
-  
-  if (i == 1) {
-    # variance of the intercept is omitted
-    personal_variations_from_mean <- b_blmm
-    personal_effects <- beta_b_blmm
-  }
-  else
-  {
-    personal_variations_from_mean <- cbind(personal_variations_from_mean, b_blmm)
-    personal_effects <- cbind(personal_effects, beta_b_blmm)
-  }
-}
 ```
 
 Number of clusters with nutritional effects only
@@ -448,8 +443,9 @@ plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
 gridExtra::grid.arrange(plot1,plot2,nrow=1)
 ```
 
-```{r variation clusters3, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
 source("mebn/MEBN.r")
+
 # Number of cluster centers 
 k <- 4
 
@@ -461,10 +457,11 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
 ```
 
 ```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+source("mebn/MEBN.r")
 
 # Number of cluster centers 
 k <- 4
@@ -480,21 +477,33 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance)
+```
+
+```{r cholmed_crosstab}
+
+table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
+
 ```
 
 
-### Predicting personal reaction type
+### Predicting personal blood test levels
 
-Finally, we can pick one the previously found reaction type clusters and hold aside the data for few of these patients. The goal would be then to use our model to predict the blood test values for this test group by their diet. This also reveals their personal reaction type for nutrition. We can compare this prediction to the true blood test values at dataset and also to the previous estimates from the whole sample population.
+So far we have explored the dataset by using all the information available. For getting more confidence for the model, we use k-fold cross validation to predict the blood test values based on personal nutrition information. It is likely that the previous model is overfitted to the dataset and it may decrade predicting performance for new and unseen data.
 
-```{r holdout_data}
-# TODO: ota esim. vain 10 tästä klusterista, jotta mallissa on mukana myös tämän klusterin potilaita 
-holdout_data <- sysdimet[sysdimet$variation_group==3,]
-training_data <- sysdimet[!(sysdimet$SUBJECT_ID %in% holdout_data$SUBJECT_ID),]
+In following, we use 5-fold cross validation where the patients in the dataset are splitted to five distinct sets and the model is estimated by holding out always one of these sets. This holdout set is then used as a prediction target. For those patients we know the true blood test values and it allows us to calculate the prediction performance score.
+
+First, we prepare the 10-fold datasets for training and testing. It is important that all observations for one patient are included either in training or testing. This is taken care of by "kfold_split_stratified" function in LOO package.
+
+```{r 5-fold split}
+library(loo)
+set.seed(345)
+fold5_indexes <- kfold_split_stratified(K = 106, x = sysdimet$SUBJECT_ID)
+#table(sysdimet$SUBJECT_ID, fold5_indexes)
 ```
 
-The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
+
+To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
 
 ```{r shrinkage_parameters, echo=TRUE, message=FALSE}
 shrinkage_parameters <- within(list(),
@@ -509,24 +518,40 @@ shrinkage_parameters <- within(list(),
 })
 ```
 
-Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
+Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. First contains 4/5 of the data and the latter 1/5. We gather the predictions later to asses the prediction performance.
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+library(loo)
+source("mebn/MEBN.r")
+#remove("models_BLMM_gamma_ar1_pred_1_fshdl_blmm")
 
-sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+
+folds <- seq(1,106)
+
+# index of holdout partition (TODO: loop)
+h <- 36
+
+holdout_idx <- fold5_indexes %in% h
+training_idx <- fold5_indexes %in% folds[-h]
+
+holdout_data <- sysdimet[holdout_idx,]
+training_data <- sysdimet[training_idx,]
+
+sysdimet_gamma_ar1_rhs <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = training_data,
                                    targetdata = holdout_data,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs_pred"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs_pred/", h), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 ```
 
-```{r, eval=FALSE}
+```{r}
 #remove("models_BLMM_gamma_ar1_rhs_pred_1_fshdl_blmm")
 source("mebn/MEBN.r")
 library(rstan)
@@ -551,7 +576,7 @@ colMeans(na.omit(pred_post$Y_pred))
 
 Bayes R2
 
-```{r, eval=FALSE}
+```{r}
 
 # Andrew Gelman, Ben Goodrich, Jonah Gabry, and Aki Vehtari (2018). R-squared for Bayesian regression models. The American Statistician
 # https://doi.org/10.1080/00031305.2018.1549100
@@ -568,3 +593,321 @@ R2 <- bayes_R2(fshdl.true, na.omit(pred_post$Y_pred))
 print(median(R2))
 ```
 
+
+And then we test again how the shrinked model fits, and does its predictive score improve from non-shrinked model 
+
+```{r normal_model_ppc, echo=FALSE, eval=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_pred/1", assumedtargets[assumedtargets$Name=="fshdl",], sysdimet)
+```
+
+```{r, ar1_rhs_loo}
+library(loo)
+
+assumedtargets <- assumedtargets[assumedtargets$Name=="fshdl",]
+nonrhs_vs_rhs <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/ar1_pred/1", "BLMM_gamma/ar1_rhs_pred/1")
+nonrhs_vs_rhs
+```
+
+
+
+
+
+### Personal prediction
+
+Finally, we can hold out a set of data for group of patients and test the predictive ability of the model. Let's calculate the model with a training set and do predictions for this separate test set.
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+person23 <- mebn.personal_graph(person_id = 23, initial_graph, assumedpredictors, assumedtargets, "BLMM_gamma/ar1/")
+```
+
+```{r, personal_variations_figure, fig.height = 7, fig.width = 7, fig.align = "center"}
+mebn.plot_personal_effects(person23, 5)
+```
+
+
+
+### Henkilökohtaisten ennusteiden varmuus
+
+Kaikkien estimoitujen henkilökohtaisten vaikutusten 95%-luottamusvälit sisältävät nollan. Tässä on kuitenkin esimerkkejä voimakkaimmista. Valitaan joku potilas edellä löydetystä ryhmästä 1 eli keskimäärin voimakkaammin insuliinilla reagoivista.
+
+```{r, echo=FALSE, eval=FALSE}
+library(bayesplot)
+
+# Datan visuaalisen tarkastelun perusteella tämän henkilön insuliinitaso nousi selvästi 
+# proteiinin saannin myötä
+
+subject_id <- 46   # tumman sininen
+
+protein_id <- match("prot", datadesc$Name)
+
+fsins_blmm <- mebn.get_localfit("fsins")
+posterior <- as.array(fsins_blmm)
+
+prot_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",protein_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("proteiini - insuliini (S46)") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+prot_plot
+
+posterior
+```
+
+```{r, echo=FALSE, eval=FALSE}
+
+#sysdimet[sysdimet$effect_group == 1,]$SUBJECT_ID
+subject_id <- 46
+
+sakkar_id <- match("sakkar", datadesc$Name)
+hhydr_id <- match("hhydr", datadesc$Name)
+
+fsins_blmm <- mebn.get_localfit("fsins")
+posterior <- as.array(fsins_blmm)
+
+sakkar_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",sakkar_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("sakkaroosi") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+hhydr_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",hhydr_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("hiilihydraatti") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+bayesplot_grid(plots = list(sakkar_plot, hhydr_plot), legends = FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+Temporal material.. remove
+
+
+```{r, echo=FALSE, eval=FALSE}
+
+## Comparing normal and gamma regressions.. absolute parameters should match?
+
+  library(bayesplot)
+  library(rstan)
+
+  fshdl_norm <- mebn.get_localfit("BLMM_normal/fshdl")
+  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/fshdl")
+  fsins_gamma <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+  fsins_ln <- mebn.get_localfit("BLMM_lognormal/fsins")
+
+  fshdl_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fshdl")
+
+  fshdl.true <- sysdimet$fshdl
+  fsins.true <- sysdimet$fsins
+  fpgluk.true <- sysdimet$fpgluk
+
+  posterior_n <- extract(fshdl_norm, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
+  posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_g <- extract(fsins_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_ln <- extract(fsins_ln, pars = c("Y_rep", "beta", "beta_Intercept", "sigma_e"))
+  
+  mean(posterior_n$beta_Intercept)
+  mean(posterior_g$beta_Intercept)
+  
+  mean(posterior_n$beta[2])
+  
+  print(fshdl_norm, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fsins_ln, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+  print(fsins_gamma, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"))
+
+  posterior_n_50 <- posterior_n$Y_rep[1:50,]
+  posterior_ln_50 <- posterior_ln$Y_rep[1:50,]
+
+  posterior_g <- extract(fshdl_gamma, pars = c("Y_rep", "beta", "beta_Intercept"))
+  posterior_g_50 <- posterior_g$Y_rep[1:50,]
+
+    ppc_dens_overlay(fshdl.true, posterior_n_50) + 
+   coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin normaali-jakauma")
+  
+  # Back to original scale 
+  #fshdl.nrep <- mebn.rescale(posterior_n_50, mean(fshdl.true))
+  #fshdl.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  fsins.grep <- mebn.rescale(posterior_g_50, mean(fshdl.true))
+  
+  ppc_dens_overlay(fshdl.true, posterior_n_50) + 
+   coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin normaali-jakauma")
+  
+#  ppc_dens_overlay(fshdl.true, fshdl.grep) + 
+#  coord_cartesian(xlim = c(0,10.0)) +
+#  ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fshdl.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren HDL-kolestrolin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,30.0)) +
+    ggtitle("Veren insuliinin gamma-jakauma")
+
+  ppc_dens_overlay(fpgluk.true, posterior_g_50) + 
+    coord_cartesian(xlim = c(0,10.0)) +
+    ggtitle("Veren glukoosin gamma-jakauma")
+
+  ppc_dens_overlay(fsins.true, posterior_ln_50) + 
+    coord_cartesian(xlim = c(0,50.0)) +
+    ggtitle("Veren insuliinin lognormal-jakauma")
+  
+```
+
+
+```{r}
+remove("models_BLMM_gamma_ar1_fsins_blmm")
+source("mebn/MEBN.r")
+  
+fit  <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90))
+ms
+
+su <- mebn.localsummary(fsins_gamma)
+su$fixef_lCI[21]
+
+                                                value = localsummary$fixef[p], 
+                                                value_lCI = localsummary$fixef_lCI[p],
+                                                value_uCI = localsummary$fixef_uCI[p],
+
+
+```
+
+
+
+
+
+
+```{r}
+#library("shinystan")
+#gamma1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+#launch_shinystan(gamma1)
+```
+
+
+
+```{r, echo=FALSE, eval=FALSE}
+library(bayesplot)
+
+fpgluk_normal <- mebn.get_localfit("BLMM_normal/fpgluk")
+fpgluk_gamma <- mebn.get_localfit("BLMM_gamma/hierarchical_idlink/fpgluk")
+
+fsins_normal <- mebn.get_localfit("BLMM_normal/fsins")
+fsins_gamma_ar1 <- mebn.get_localfit("BLMM_gamma/ar1/fsins")
+
+normal_plot <- plot(fpgluk_normal)
+gamma_plot <- plot(fpgluk_gamma)
+
+bayesplot_grid(plots = list(normal_plot, gamma_plot), legends = FALSE)
+
+summary(fsins_gamma_ar1)
+
+```
+
+```{r}
+# Compare intercepts
+
+posterior_n <- extract(fsins_normal, pars = c("beta_Intercept", "beta", "sigma_e"))
+posterior_g <- extract(fsins_gamma_ar1, pars = c("beta_Intercept", "beta", "sigma_e"))
+
+mean(posterior_n$beta_Intercept) # 12
+mean(posterior_g$beta_Intercept) # -9
+
+#colMeans(posterior_n$beta)
+#colMeans(posterior_g$beta)
+
+
+```
+
+## Pruning the graph
+
+Fit of the local distributions is now reasonable well for considering the graphical model that it describes. For gaining better nutritional insight and improving the model generalization, we should still prune out insignificant nutrients and holding only most relevant as edges of the graph.
+
+Vehtari and Piiroinen () provided a good overview of Bayesian model selection methods. First, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
+
+```{r shrinkage_parameters, echo=TRUE, message=FALSE}
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
+
+Next we fit the previous model with the Finnish horseshoe added
+
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_ar1_rhs <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/ar1_rhs", 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs.stan",
+                                   reg_params = shrinkage_parameters,
+                                   normalize_values = TRUE)
+```
+
+And then we test again how the shrinked model fits, and does its predictive score improve from non-shrinked model 
+
+```{r normal_model_ppc, echo=FALSE, eval=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/", assumedtargets, sysdimet)
+```
+
+```{r, ar1_rhs_loo}
+nonrhs_vs_rhs <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/ar1", "BLMM_gamma/ar1_rhs")
+nonrhs_vs_rhs
+```
+
+Unfortunately, a visual comparison of PPCS show bias in model fits. This is further confirmed by a LOO comparison that shows little to significant drawbacks in prediction performance.
+
+Thus, we discard the RHS model and proceed with previous full model with AR(1) structure. Projection method is shown to be a good for finding relevant model in the model space (viite). It seeks to find a minimal model that has 95% of predictive power of a full model.
+
+The method has been implemented in projpred package 
+
+```{r projpred}
+
+## TODO: Repeat this for all local model in the graph
+
+# Test with BLMM_gamma/ar1/fshdl 
+target_column <- assumedtargets[assumedtargets$Name=="fshdl",]
+
+# Get parameters that we used to fit the previous model
+params <- mebn.set_model_parameters(assumedpredictors, target_column, group_column = "SUBJECT_ID", inputdata = sysdimet, normalize_values = TRUE)
+
+# Initialize a reference model for variable selection
+
+refm <- init_refmodel(z = params$X, 
+                      y = params$Y, 
+                      gaussian(), 
+                      predfun = mebn.linpred, 
+                      dis = sysdimet_gamma_ar1,
+                      offset = NULL, 
+                      intercept = TRUE,
+                      cvfun = NULL, 
+                      cvfits = NULL)
+
+
+
+
+```

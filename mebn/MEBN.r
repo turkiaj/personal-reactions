@@ -287,7 +287,7 @@ mebn.localsummary <- function(fit)
 
 ##################################################
 
-mebn.get_localfit <- function(target_name, local_model_cache = "models", use_memory = TRUE)
+mebn.get_localfit <- function(target_name, local_model_cache = "models", mem_cache = FALSE)
 {
   modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
   localfit <- NULL
@@ -295,18 +295,18 @@ mebn.get_localfit <- function(target_name, local_model_cache = "models", use_mem
   memcache <- gsub("/", "_", modelcache)  
   memcache <- gsub(".rds", "", memcache)  
   
-  if (use_memory == TRUE & exists(memcache))
+  if (mem_cache == TRUE & exists(memcache))
   {
     localfit <- get(memcache)
-    print(paste0("Using cached ", memcache))
+    #print(paste0("Using cached ", memcache))
   }
   else if (file.exists(modelcache))
   {
     localfit <- readRDS(modelcache)
-    print(paste0("Loading file ", modelcache))
+    #print(paste0("Loading file ", modelcache))
     
     # Set memcache to Global Environment
-    if (use_memory == TRUE) assign(memcache, localfit, 1)
+    if (mem_cache == TRUE) assign(memcache, localfit, 1)
 
     #print(paste0("Setting memory cache: ", memcache))
   }
@@ -356,8 +356,8 @@ mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
     # Statistics for model 1
     m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
     
-    remove(m1_rel_n_eff)
-    remove(m1_loo)
+    if (exists("m1_rel_n_eff")) remove(m1_rel_n_eff)
+    if (exists("m1_loo")) remove(m1_loo)
     
     if (!any(is.na(exp(m1_loglik))))
     {
@@ -368,8 +368,8 @@ mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
     # Statistics for model 2
     m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
     
-    remove(m2_rel_n_eff)
-    remove(m2_loo)
+    if (exists("m2_rel_n_eff")) remove(m2_rel_n_eff)
+    if (exists("m2_loo")) remove(m2_loo)
     
     if (!any(is.na(exp(m2_loglik))))
     {
@@ -916,7 +916,7 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
 
 ##################################################
 
-mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, keep_only_effects)
+mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, keep_only_effects, feature_index)
 {
   # Build effect names
   cluster_data$predictor <- rep(assumedpredictors[feature_index,]$Description,nrow(assumedtargets))
