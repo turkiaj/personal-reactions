@@ -213,12 +213,12 @@ Our MEBN functions extract a propabilistic graphical model from local distributi
 - Effects are sorted by magnitude and confidence
 
 ```{r, echo=TRUE, eval=TRUE}
-source("mebn/MEBN.r")
 #sysdimet_gamma_ar1 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") ei lue oikein?
 
 # Query the graph for personal variances, denoted by b_sigma-nodes
 allnodes <- V(sysdimet_gamma_ar1)
 b_sigma <- allnodes[allnodes$type=="b_sigma"]
+#beta_nodes <- allnodes[allnodes$type=="beta"]
 
 # Again, a separate data frame is constructed for printing
 personal_variances<-data.frame(matrix(NA, nrow=length(b_sigma), ncol=0))
@@ -293,6 +293,28 @@ for (i in c(1:nrow(assumedtargets)))
 
 ```
 
+```{r personal_effects}
+
+# Pull aa's effects to one vector
+nperson <- 106
+largest_personal_effects <- as.data.frame(as.vector(personal_effects))
+colnames(largest_personal_effects) <- c("amount")
+largest_personal_effects$abs_amount <- abs(largest_personal_effects$amount)
+largest_personal_effects$predictor <- rep(rep(assumedpredictors[feature_index,]$Description,nrow(assumedtargets)), nperson)
+
+cl <- rep(1,length(feature_index)) # number of predictors
+t_idx <- c(cl,cl+1,cl+2,cl+3,cl+4) # predictors x targets
+largest_personal_effects$response <- rep(assumedtargets$Description[t_idx], nperson)
+
+largest_personal_effects$effect <- paste0(largest_personal_effects$predictor," -> ", largest_personal_effects$response)
+
+largest_personal_effects <- largest_personal_effects[largest_personal_effects$abs_amount > 2,]
+largest_personal_effects <- largest_personal_effects[order(-largest_personal_effects$abs_amount),]
+largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
+
+```
+
+
 ## Latent grouping
 
 ```{r, echo=FALSE, eval=FALSE}
@@ -328,6 +350,8 @@ gridExtra::grid.arrange(plot1,plot2,nrow=1)
 By looking previous diagram we see that there are four clearly identifiable groups between patients. At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
 
 ```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+source("mebn/MEBN.r")
+
 # Number of cluster centers 
 k <- 4
 
@@ -339,14 +363,14 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
 Cholesterol medication seems to dominate the clusters
 
 Let's see how the clustering shows with absolute effects rather than difference from mean
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -363,7 +387,8 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, largest_personal_effects, feature_index, sort_by_amount = FALSE)
+
 ```
 
 The rising effect of cholesterol medication to blood insulin seems to be dominating these clusters. Let's create a cross tabulation to explore this effect more closely.
@@ -461,7 +486,7 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
 ```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}

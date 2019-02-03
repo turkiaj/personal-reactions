@@ -287,7 +287,7 @@ mebn.localsummary <- function(fit)
 
 ##################################################
 
-mebn.get_localfit <- function(target_name, local_model_cache = "models", mem_cache = FALSE)
+mebn.get_localfit <- function(target_name, local_model_cache = "models", mem_cache = TRUE)
 {
   modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
   localfit <- NULL
@@ -916,7 +916,7 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
 
 ##################################################
 
-mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, keep_only_effects, feature_index)
+mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, keep_only_effects, feature_index, sort_by_amount = FALSE)
 {
   # Build effect names
   cluster_data$predictor <- rep(assumedpredictors[feature_index,]$Description,nrow(assumedtargets))
@@ -945,17 +945,27 @@ mebn.plot_clusters <- function(cluster_data, assumedpredictors, assumedtargets, 
   
   plot_data$below_above <- ifelse(plot_data$amount < 0, "below", "above")
   
-  ggplot(plot_data, aes(x=effect, y=amount)) + 
-    geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
-    coord_flip() +
-    theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
-    facet_wrap(~cluster)
+  if (sort_by_amount == TRUE) {
+    ggplot(plot_data, aes(x=reorder(effect, amount), y=amount)) + 
+      geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
+      coord_flip() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      facet_wrap(~cluster)
+  } else {  
+    ggplot(plot_data, aes(x=reorder(effect, amount), y=amount)) + 
+      geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
+      coord_flip() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      facet_wrap(~cluster)
+  }  
 }
 
 ##################################################
 
 mebn.compare_typicals <- function(bn1, bn2)
 {
+  library(igraph)
+  
   # - find beta nodes of both normal and gamma distributions 
   normal_nodes <- V(bn1)
   n_beta <- normal_nodes[normal_nodes$type=="beta"]
