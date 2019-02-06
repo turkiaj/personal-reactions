@@ -12,7 +12,7 @@ abstract: This notebook describes the implementation of the modelling method and
 
 ```{r setup, include=FALSE}
 library(knitr)
-knitr::opts_chunk$set(echo = TRUE, fig.align="center", cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 
 # this allows using tikz rendering for plots with "dev=tikz"
 knit_hooks$set(plot = function(x, options) {
@@ -200,9 +200,8 @@ Local distributions seem to have reasonable good fit. For better overall insight
   - Principal components as a graph visualization 
   -- This shows the population effects
 
-```{r, typical_effects_figure, fig.height = 7, fig.width = 7, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
-
 ```
 
 #Probabilistic graphical model
@@ -243,7 +242,8 @@ number_of_varying_effects <- nrow(effects_with_most_variance)
 
 For better undestanding, we can also visualize these personal variances as a graph
 
-```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center"}
+```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center", cache = TRUE}
+source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
 
@@ -251,7 +251,7 @@ Although there are personal differences, it is likely that not everyone behave u
 
 We can now take the personal estimations of the effects and see, if they form clusters
 
-```{r kmeans_dfs, echo=FALSE, eval=FALSE}
+```{r kmeans_dfs, echo=FALSE, cache=FALSE}
 library(rstan)
 
 # Pick these predictors as features for clustering -- get all
@@ -293,9 +293,9 @@ for (i in c(1:nrow(assumedtargets)))
 
 ```
 
-```{r personal_effects}
+```{r personal_effects, cache=FALSE}
 
-# Pull aa's effects to one vector
+# Pull effects form all patients to one vector
 nperson <- 106
 largest_personal_effects <- as.data.frame(as.vector(personal_effects))
 colnames(largest_personal_effects) <- c("amount")
@@ -314,10 +314,9 @@ largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
 
 ```
 
-
 ## Latent grouping
 
-```{r, echo=FALSE, eval=FALSE}
+```{r, echo=FALSE, eval=TRUE}
 library(stats)
 library(gridExtra)
 
@@ -536,7 +535,7 @@ shrinkage_parameters <- within(list(),
 
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
-```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = training_data,

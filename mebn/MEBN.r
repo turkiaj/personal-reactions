@@ -287,7 +287,7 @@ mebn.localsummary <- function(fit)
 
 ##################################################
 
-mebn.get_localfit <- function(target_name, local_model_cache = "models", mem_cache = TRUE)
+mebn.get_localfit <- function(target_name, local_model_cache = "models", mem_cache = FALSE)
 {
   modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
   localfit <- NULL
@@ -769,6 +769,8 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
 
 mebn.plot_typical_effects <- function(reaction_graph, top_effects)
 {
+  library(igraph)
+  
   # Parameter and hyperparameter nodes are removed and visualized otherwise
   visual_graph <- reaction_graph
   
@@ -792,27 +794,30 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
   visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
   
   # Graph layout
-  V(visual_graph)$size = 10 
+  V(visual_graph)$size = 5 
   # - put all blood test values in own rank
   bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
   # - flip layout sideways, from left to right
-  gap <- 4
+  gap <- 6
   bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
-
+  
+  # Align vertex labels according to graph level
+  V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
+  V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
+  
   # Color and size encoding for edges according to beta coefficient
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
   E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
-  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
-  
-  # Idea: make own edge for personal variance to visualization graph
-  
+  E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
+
   plot(visual_graph, 
        layout=bipa_layout, 
        rescale=TRUE,
        vertex.label.family="Helvetica",
        vertex.label.color="black",
        vertex.label.cex=1,
-       edge.arrow.size=1,
+       vertex.label.dist=4,
+       edge.arrow.size=0.5,
        edge.arrow.width=1)
 }
 
@@ -820,6 +825,8 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
 
 mebn.plot_personal_effects <- function(personal_graph, top_effects)
 {
+  library(igraph)
+  
   # Parameter and hyperparameter nodes are removed and visualized otherwise
   visual_graph <- personal_graph
   
@@ -844,12 +851,16 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges)])
   
   # Graph layout
-  V(visual_graph)$size = 10 
+  V(visual_graph)$size = 5
   # - put all blood test values in own rank
   bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
   # - flip layout sideways, from left to right
   gap <- 4
   bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+  
+  # Align vertex labels according to graph level
+  V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
+  V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
   # Color and size encoding for edges according to beta coefficient
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
@@ -862,7 +873,8 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
        vertex.label.family="Helvetica",
        vertex.label.color="black",
        vertex.label.cex=1,
-       edge.arrow.size=1,
+       vertex.label.dist=4,
+       edge.arrow.size=0.5,
        edge.arrow.width=1)
 }
 
@@ -870,6 +882,8 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
 
 mebn.plot_personal_variations <- function(reaction_graph, top_effects)
 {
+  library(igraph)
+  
   # Parameter and hyperparameter nodes are removed and visualized otherwise
   visual_graph <- reaction_graph
   
@@ -893,12 +907,16 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
   visual_graph <- delete.edges(visual_graph, alledges[-c(top_neg_edges, top_pos_edges, top_pers_edges)])
   
   # Graph layout
-  V(visual_graph)$size = 10 
+  V(visual_graph)$size = 5
   # - put all blood test values in own rank
   bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
   # - flip layout sideways, from left to right
   gap <- 4
   bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+  
+  # Align vertex labels according to graph level
+  V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
+  V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side  
   
   # Color and size encoding for edges according to beta coefficient
   E(visual_graph)$color="gray"
@@ -910,7 +928,8 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
        vertex.label.family="Helvetica",
        vertex.label.color="black",
        vertex.label.cex=1,
-       edge.arrow.size=1,
+       vertex.label.dist=4,
+       edge.arrow.size=0.5,
        edge.arrow.width=1)
 }
 
