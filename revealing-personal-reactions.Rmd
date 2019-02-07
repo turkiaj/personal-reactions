@@ -25,9 +25,11 @@ knit_hooks$set(plot = function(x, options) {
 source("mebn/MEBN.r")
 ```
 
-In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network is a directed graphical model where nodes of the graph are random variables and the edges between the nodes indicate a flow of information. In a nutritional modelling we assing the amount of nutrients at the person's diet and the indicators of person's well-being those random variables with a probability distribution of possible values. 
+In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network is a directed graphical model where nodes of the graph are random variables and the edges between the nodes indicate an effect between variables. In the nutritional modelling we assign the amount of nutrients at the person's diet and the indicators of person's well-being those as random variables, and then we study the effects between them. The goal is then to find the connections for the graph that most probably describes the correct conditional relationships between nutrients and their effects.
 
-The goal of graphical modelling is to find a graph that most probably describes the correct conditional relationships between nutrients and their effects. In this article we use this method to analyze a dataset from the Sysdimet study [] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated.
+As we are interested in the personal variations of these nutritional effects we use a mixed-effect parametrization of Bayesian netowrk [@Bae2016].  
+
+In this article we use this method to analyze a dataset from the Sysdimet study [] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated.
 
 **Formal definition of the problem.** Let us denote the graph of interconnected nutrients and responses with $G$. We can then formulate the modeling problem as finding the graph $G$ that is the most probable given the data $D$
 
