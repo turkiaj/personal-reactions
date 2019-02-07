@@ -58,6 +58,44 @@ mebn.new_graph_with_randomvariables <- function(datadesc)
 
 ##################################################
 
+mebn.fully_connected_bipartite_graph <- function(datadesc)
+{
+  library(igraph)  
+  
+  # Initialize graph structure
+  reaction_graph <- make_empty_graph() 
+  
+  min_order <- min(datadesc$Order)
+  predictor_columns <- datadesc[datadesc$Order==min_order,]
+  
+  next_order <- max(datadesc$Order)
+  assumed_targets <- datadesc[datadesc$Order==next_order,]
+  
+  # Add nodes to reaction graph for all the random variables  
+  reaction_graph <- reaction_graph + vertices(as.vector(assumed_targets$Name), 
+                                              label=as.vector(assumed_targets$Description), 
+                                              type=next_order,
+                                              color = "#74aaf2", 
+                                              size = 1,
+                                              shape = "circle")
+  
+  reaction_graph <- reaction_graph + vertices(as.vector(predictor_columns$Name), 
+                                              label=as.vector(predictor_columns$Description), 
+                                              type=min_order,
+                                              color = "#3cd164", 
+                                              size = 1, 
+                                              shape = "circle")
+  
+    
+  for (t in as.vector(assumed_targets$Name))
+    for (p in as.vector(predictor_columns$Name))
+      reaction_graph <- reaction_graph + edge(c(p, t))
+  
+  return(reaction_graph)
+}
+
+##################################################
+
 mebn.posterior <- function(igraph_node)
 {
 
