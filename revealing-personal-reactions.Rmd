@@ -42,6 +42,7 @@ By using the Bayes' Rule we can be split this probability into proportions of th
 {P}({G}|{D}) \propto {P}({D}|{G}) {P}({G})
 \end{align}
 
+<<<<<<< HEAD
 This tuens the problem to finding a graph that is most probable given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
 
 The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
@@ -49,6 +50,18 @@ The joint probability of the graph \(P(G|D)\) can furthermore factorized into se
 **Hierarchical estimation of the local distributions**. We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
 
 Concretely, we use generalized linear mixed-effect models to describe the local probability distributions of Bayesian network. The models have a linear function of nutrients as input and we estimate parameters \(beta\) and \(b\) that optimally give the corresponding response 
+=======
+This converts the problem in finding the graph with a maximal probability for the given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
+
+The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
+
+**Hierarchical estimation of the local distributions**. The data consists of repeated measurements from the patients. By modelling this 
+
+##########
+TODO: - esittele paikallisten jakaumien sekamallinnus ja miten jatkossa käsiteltävät beta, b, b_sigma ym. parametrit liittyvät verkkomalliin
+
+
+>>>>>>> 1b38039c65191b7ddecba45b11064604c45dc8a8
 
 # TODO: jatka tästä mallin ja parametrin formulointia..
 
@@ -61,6 +74,15 @@ Concretely, we use generalized linear mixed-effect models to describe the local 
 
 ## Data
 
+<<<<<<< HEAD
+=======
+TODO: Esittele data verkkona.. alla..
+
+The dataset in our experiment comes from Sysdimet study. ... variables, data points..
+
+We have collected our prior information at a separate "Data description.csv"-file. For guiding the search for plausible graphs we have indicated which variables are responses at the graph and which are possible predictors affecting them.
+
+>>>>>>> 1b38039c65191b7ddecba45b11064604c45dc8a8
 ```{r data_loading, echo=FALSE, message=FALSE}
 
 # Read the data description
@@ -91,6 +113,30 @@ bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
 
 V(initial_graph)[V(initial_graph)$type == "100"]$label.degree = pi # left side
 V(initial_graph)[V(initial_graph)$type == "200"]$label.degree = 0 # right side
+
+plot(initial_graph,
+       layout=bipa_layout, 
+       rescale=TRUE,
+       vertex.label.family="Helvetica",
+       vertex.label.color="black",
+       vertex.label.cex=1,
+       vertex.label.dist=4,
+       edge.arrow.size=0.5,
+       edge.arrow.width=1)
+
+```
+
+
+```{r}
+library(igraph)
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+
+V(initial_graph)$size = 5 
+# - put all blood test values in own rank
+bipa_layout <- layout_as_bipartite(initial_graph, types = V(initial_graph)$type == "100")
+# - flip layout sideways, from left to right
+gap <- 6
+bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
 
 plot(initial_graph,
        layout=bipa_layout, 
