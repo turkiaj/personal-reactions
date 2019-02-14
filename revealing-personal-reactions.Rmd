@@ -42,47 +42,25 @@ By using the Bayes' Rule we can be split this probability into proportions of th
 {P}({G}|{D}) \propto {P}({D}|{G}) {P}({G})
 \end{align}
 
-<<<<<<< HEAD
-This tuens the problem to finding a graph that is most probable given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
+This turns the problem to finding a graph that is most probable given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
 
 The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
 
 **Hierarchical estimation of the local distributions**. We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
 
-Concretely, we use generalized linear mixed-effect models to describe the local probability distributions of Bayesian network. The models have a linear function of nutrients as input and we estimate parameters \(beta\) and \(b\) that optimally give the corresponding response 
-=======
-This converts the problem in finding the graph with a maximal probability for the given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
-
-The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
-
-**Hierarchical estimation of the local distributions**. The data consists of repeated measurements from the patients. By modelling this 
-
-##########
-TODO: - esittele paikallisten jakaumien sekamallinnus ja miten jatkossa käsiteltävät beta, b, b_sigma ym. parametrit liittyvät verkkomalliin
-
-
->>>>>>> 1b38039c65191b7ddecba45b11064604c45dc8a8
-
-# TODO: jatka tästä mallin ja parametrin formulointia..
+Concretely, we can use generalized linear mixed-effect models to describe the local probability distributions of the Bayesian network. We assume that every  random variable at the network can be explaned with a probability distribution from an exponential family of distributions with linear link function with input from its parent nodes. We furthermore assume that the effect between variables can be factorized into typical and personal parts. Here typical part of the effect is denoted with coefficient \beta_i and personal part as \b_i
 
 \begin{align}
 \begin{split}
-\label{Normal LME}
-{P}({X_i}|{pa(X_i), \phi_i, G_i}) = EXP-FAM({X_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
+\label{EXPFAM LME}
+{P}({Y_i}|{pa(Y_i), \phi_i, G_i}) = {EXPFAM}({Y_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
 \end{split}
 \end{align}
 
-## Data
+Note that while this formulation generalizes to graphs with multiple levels, we have a prior assumption ({P}({G})) that the structure of our dataset is a bipartite graph. 
 
-<<<<<<< HEAD
-=======
-TODO: Esittele data verkkona.. alla..
+### Data as a graph
 
-The dataset in our experiment comes from Sysdimet study. ... variables, data points..
-
-We have collected our prior information at a separate "Data description.csv"-file. For guiding the search for plausible graphs we have indicated which variables are responses at the graph and which are possible predictors affecting them.
-
->>>>>>> 1b38039c65191b7ddecba45b11064604c45dc8a8
 ```{r data_loading, echo=FALSE, message=FALSE}
 
 # Read the data description
@@ -96,15 +74,13 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
-The data we fit to earlier descibed model consists of nutrients and blood test values..
-
 ```{r graph, fig.height = 8, fig.width = 10, fig.align = "center"}
 source("mebn/MEBN.r")
 
 library(igraph)
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 
-V(initial_graph)$size = 5 
+V(initial_graph)$size = 10 
 # - put all blood test values in own rank
 bipa_layout <- layout_as_bipartite(initial_graph, types = V(initial_graph)$type == "100")
 # - flip layout sideways, from left to right
@@ -126,35 +102,19 @@ plot(initial_graph,
 
 ```
 
+We assume a connection from every nutrient and personal information to every blood test value at the dataset. The model search is then focused on to estimating optimal coefficients \beta and \b_i that we use to define the strength of the connection. It is also important to find correct probability distributions for the random variables.
 
-```{r}
-library(igraph)
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+Our starting assumption is that all the variables, except the factors, are normally distributed. This assumption is naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
 
-V(initial_graph)$size = 5 
-# - put all blood test values in own rank
-bipa_layout <- layout_as_bipartite(initial_graph, types = V(initial_graph)$type == "100")
-# - flip layout sideways, from left to right
-gap <- 6
-bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
-
-plot(initial_graph,
-       layout=bipa_layout, 
-       rescale=TRUE,
-       vertex.label.family="Helvetica",
-       vertex.label.color="black",
-       vertex.label.cex=1,
-       vertex.label.dist=4,
-       edge.arrow.size=0.5,
-       edge.arrow.width=1)
-
-```
-
-
-We start from a hierarchical model with normal distribution that estimates of absolute effects are considered as reference when developing the model.
+\begin{align}
+\begin{split}
+\label{Normal LME}
+{P}({Y_i}|{pa(Y_i), \phi_i, G_i}) = Normal({Y_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
+\end{split}
+\end{align}
 
 ```{r graph_with_normal_rvs, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
-sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_normal_graph, 
+sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                          inputdata = sysdimet,
                                          predictor_columns = assumedpredictors, 
                                          assumed_targets = assumedtargets, 
@@ -166,9 +126,7 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_normal_graph,
 
 ```
 
-**Normal model as reference**
-
-If we now check these initial models of personal blood test responses, we can see that the Gaussian distribution is not a good fit as it allows negative blood test values and does not model the right tail of the true distribution. The estimated model parameters of Gaussian models are still kept as a reference point for further models. Those parameters are the weights of the edges at the Bayesian Network and it is important that all the random variables at the network can work with the same regression coefficients.
+We can asses the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
 
 ```{r normal_model_ppc, echo=FALSE, eval=TRUE, message=FALSE, cache=TRUE}
 normal_targets <- assumedtargets
@@ -180,8 +138,20 @@ mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 
 **Developing the model**
 
+# TODO: Käy läpi tähän asti kaavat ym. ja jatka Gamma-mallin kanssa..
+
+
 - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
   Log-normal / Gamma
+  
+- We use identity link as it keeps the regression coefficients on the same absolute scale than with Gaussian models
+
+\begin{align}
+\begin{split}
+\label{Gamma LME}
+{P}({Y_i}|{pa(Y_i), \phi_i, G_i}) = Gamma({Y_i} | \alpha, \alpha / pa(X_i)\beta_i + pa_Z(X_i)b_i)
+\end{split}
+\end{align}
 
 ```{r graph_with_gamma_response, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 initial_gamma_graph <- mebn.new_graph_with_randomvariables(datadesc)
@@ -203,7 +173,7 @@ sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph,
 mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/", assumedtargets, sysdimet)
 ```
 
-As we see here, the regression coefficients /(beta) are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
+As we see here, the regression coefficients {\beta} are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
 
 ```{r effect_comparison}
 beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
@@ -219,6 +189,8 @@ normal_vs_gamma <- mebn.LOO_comparison(assumedtargets, "BLMM_normal", "BLMM_gamm
 normal_vs_gamma
 # https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
+
+Is P(D|G_i) = SUM(ELPD_i)?
 
 As the expected log predictive density (ELPD) of gamma model is higher, we should choose that for further development.
 
@@ -256,25 +228,21 @@ ar1_comparison
    
 ```
 
-#Principal components as graph visualiation
+#Typical effects of nutrition
 
-Local distributions seem to have reasonable good fit. For better overall insight to nutritional effects we can next plot the Bayesian network that describes the connections between nutrients and their responses. (Beta and b nodes in PGM)
+We have now reached a reasonable good fit for the local distributions of the Bayesian network. Our code has extracted a graphical model from these full posterior distributions of random variables and parameters. The graph consists mean values of the posteriors and also their credible intervals. This is a lighter data structure for further analysis and allows also graph operations besides the regression modeling. 
 
-- Local distributions are estimated with Stan and values of the parameters are gathered as a Bayesian network
-- This enables us to look at the joint probability as a whole
-  - Principal components as a graph visualization 
-  -- This shows the population effects
+Besides the random variables, the graph also includes the regression coefficients \beta and \b that denote the typical and personal magnitudes of effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients \beta as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test.
 
 ```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 ```
 
-#Probabilistic graphical model
+#Personal effects
 
-Our MEBN functions extract a propabilistic graphical model from local distributions estimated with Stan. We can us this PGM to analysis. 
+Beside the typical effects, our main interest lies on the personal effects \b and their variances {\b_sigma}. If there is a large variance for the personal effect it means that there exists personal differences in reaction types. These differences are our main interest to find.
 
-- We can query the graph for all the sigma_b-nodes that represent variation of the effect between persons
-- Effects are sorted by magnitude and confidence
+In this dataset there exist 20*5=100 possible effect between nutrients and blood tests. For finding the most interesting effects with most personal variance, we extract and sort b_sigma-hyperparameters from the graph.
 
 ```{r, echo=TRUE, eval=TRUE}
 #sysdimet_gamma_ar1 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") ei lue oikein?
@@ -298,19 +266,21 @@ ordered_personal_variance <- personal_variances[order(-personal_variances$varian
 head(ordered_personal_variance, 40)
 ```
 
-Let us examine closer those of the effects that have most probable variance over 0.10
+Let us the examine closer those of the effects that have most probable variance over 0.30
 
 ```{r number_of_varying_effects}
 effects_with_most_variance <- ordered_personal_variance[ordered_personal_variance$variance >= 0.30,]
 number_of_varying_effects <- nrow(effects_with_most_variance)
 ```
 
-For better undestanding, we can also visualize these personal variances as a graph
+For better undestanding, we can also visualize these personal variances again as a graph
 
 ```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center", cache = TRUE}
 source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
+
+##Clusters of personal graphs
 
 Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
 
@@ -427,14 +397,15 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
+cluster_index <- seq(1:k)
+mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
 Cholesterol medication seems to dominate the clusters
 
 Let's see how the clustering shows with absolute effects rather than difference from mean
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15}
+```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15, cache=TRUE}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -451,7 +422,9 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, largest_personal_effects, feature_index, sort_by_amount = FALSE)
+#mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, largest_personal_effects, feature_index, sort_by_amount = TRUE)
+cluster_index <- seq(1:k)
+mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 
 ```
 
@@ -463,9 +436,23 @@ table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
 
 ```
 
-Persons in clusters 1 and 4 are taking cholesterol medications, and for them it seems to rise cholesterol levels.
+Persons in clusters 1 and 4 are taking cholesterol medication. For patients in the cluster 1 the medication seems to rise the insulin level quite much, but for patients in the cluster 4 not much at all. Let's try to confirm this finding by visualizing the components of insuling variance.
 
-TODO: Plot insulin levels of groups?
+```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=7, fig.height=6, cache=TRUE}
+source("mebn/MEBN.r")
+
+# get indexes of personal effects for fsins in variations_data vector
+fsins_index <- match("fsins", assumedtargets$Name)
+fsins_components_idx <- seq(nrow(assumedpredictors)*fsins_index,nrow(assumedpredictors)*(fsins_index+1)-1)
+
+feature_index <- c(1:nrow(assumedpredictors))
+fsins_clusters_1and4 <- variations_data[fsins_components_idx,c(1,4)]
+
+# plot the effects of all nutrients for clusters 1 and 4 for fsins
+cluster_index <- c(1,4)
+mebn.plot_clusters(fsins_clusters_1and4, cluster_index, assumedpredictors, assumedtargets[assumedtargets$Name=="fsins",], NULL, feature_index, sort_by_amount = TRUE)
+```
+
 
 Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
 
@@ -550,7 +537,8 @@ sysdimet$variation_group <- km$cluster
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
+cluster_index <- seq(1:k)
+mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
 ```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
@@ -569,7 +557,8 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
-mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+cluster_index <- seq(1:k)
+mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
 ```
 
 
