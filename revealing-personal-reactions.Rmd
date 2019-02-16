@@ -21,6 +21,9 @@ knit_hooks$set(plot = function(x, options) {
   } else hook_plot_md(x, options)
 })
 
+# Fix seed for random number generator for getting consistent results in kmeans etc.
+fixed_seed <- 678
+
 # Load common MEBN package
 source("mebn/MEBN.r")
 ```
@@ -58,8 +61,6 @@ Concretely, we can use generalized linear mixed-effect models to describe the lo
 \end{align}
 
 Note that while this formulation generalizes to graphs with multiple levels, we have a prior assumption ({P}({G})) that the structure of our dataset is a bipartite graph. 
-
-### Data as a graph
 
 ```{r data_loading, echo=FALSE, message=FALSE}
 
@@ -104,14 +105,7 @@ plot(initial_graph,
 
 We assume a connection from every nutrient and personal information to every blood test value at the dataset. The model search is then focused on to estimating optimal coefficients \beta and \b_i that we use to define the strength of the connection. It is also important to find correct probability distributions for the random variables.
 
-Our starting assumption is that all the variables, except the factors, are normally distributed. This assumption is naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
-
-\begin{align}
-\begin{split}
-\label{Normal LME}
-{P}({Y_i}|{pa(Y_i), \phi_i, G_i}) = Normal({Y_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
-\end{split}
-\end{align}
+Our starting assumption is that both nutrients and the blood test values are normally distributed. This assumption is naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
 
 ```{r graph_with_normal_rvs, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph, 
@@ -275,7 +269,7 @@ number_of_varying_effects <- nrow(effects_with_most_variance)
 
 For better undestanding, we can also visualize these personal variances again as a graph
 
-```{r personal_variations_figure, fig.height = 7, fig.width = 10, fig.align = "center", cache = TRUE}
+```{r personal_variations_figure, fig.height = 8, fig.width = 10, fig.align = "center", cache = TRUE}
 source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
@@ -328,7 +322,7 @@ for (i in c(1:nrow(assumedtargets)))
 
 ```
 
-```{r personal_effects, cache=FALSE}
+```{r personal_effects, echo=FALSE, cache=FALSE}
 
 # Pull effects form all patients to one vector
 nperson <- 106
@@ -355,6 +349,7 @@ largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
 library(stats)
 library(gridExtra)
 
+set.seed(fixed_seed)
 k.max <- 8
 wss_effects <- sapply(1:k.max, function(k){kmeans(personal_effects, k, nstart=50, iter.max = 15)$tot.withinss})
 wss_vars <- sapply(1:k.max, function(k){kmeans(personal_variations_from_mean, k, nstart=50, iter.max = 15)$tot.withinss})
@@ -390,6 +385,7 @@ source("mebn/MEBN.r")
 k <- 4
 
 # Clustering using k-means
+set.seed(fixed_seed)
 km <- kmeans(personal_variations_from_mean, centers = k)
 
 # Every patient can be assigned to some cluster based on how their reactions differ from average
@@ -401,9 +397,9 @@ cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
-Cholesterol medication seems to dominate the clusters
+Cholesterol medication seems to dominate the clusters. There are patients for who cholesterol medication raises the blood insulin levels more than on average and for other group the raise is less than on average.
 
-Let's see how the clustering shows with absolute effects rather than difference from mean
+Let's see how the clustering shows with absolute effects rather than difference from mean. Note that these are not the greatest effects, but those with most personal variance.
 
 ```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15, cache=TRUE}
 source("mebn/MEBN.r")
@@ -412,6 +408,7 @@ source("mebn/MEBN.r")
 k <- 4
 
 # Clustering using k-means
+set.seed(fixed_seed)
 km <- kmeans(personal_effects, centers = k)
 
 # Every patient can be assigned to some cluster also based on how their personal reactions types
@@ -425,20 +422,30 @@ variations_data <- as.data.frame(t(km$centers))
 #mebn.plot_clusters(variations_data, assumedpredictors, assumedtargets, largest_personal_effects, feature_index, sort_by_amount = TRUE)
 cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
+#mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 
 ```
 
-The rising effect of cholesterol medication to blood insulin seems to be dominating these clusters. Let's create a cross tabulation to explore this effect more closely.
+By looking at the absolute effect of the cholesterol medication it seems that there separetes two groups where one it is a significant factor in explaining blood insulin level, and other group where it does not play virtually any role. But does these patients even take cholesterol medications? Let's create a cross tabulation of observations to explore this effect more closely.
 
 ```{r cholmed_crosstab}
 
 table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
 
 ```
+Average blood insulin levels in these clusters:
 
-Persons in clusters 1 and 4 are taking cholesterol medication. For patients in the cluster 1 the medication seems to rise the insulin level quite much, but for patients in the cluster 4 not much at all. Let's try to confirm this finding by visualizing the components of insuling variance.
+```{r}
 
-```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=7, fig.height=6, cache=TRUE}
+for (i in seq(1,4)) print(paste0("cluster ", i, ": ", mean(sysdimet[sysdimet$effect_group == i,]$fsins)))
+
+```
+
+There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking cholesterol medication. For patients in the cluster 4 the average insulin level is  the medication seems to rise the insulin level quite much, but for patients in the cluster 2 not much at all. 
+
+Let's try to confirm this finding by visualizing the components of insulin variance.
+
+```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=10, fig.height=6, cache=TRUE}
 source("mebn/MEBN.r")
 
 # get indexes of personal effects for fsins in variations_data vector
@@ -446,13 +453,14 @@ fsins_index <- match("fsins", assumedtargets$Name)
 fsins_components_idx <- seq(nrow(assumedpredictors)*fsins_index,nrow(assumedpredictors)*(fsins_index+1)-1)
 
 feature_index <- c(1:nrow(assumedpredictors))
-cluster_index <- c(1,4)
+cluster_index <- c(1,2,3,4)
 
 fsins_clusters <- variations_data[fsins_components_idx,cluster_index]
 
-# plot the effects of all nutrients for clusters 1 and 4 for fsins
+# plot the effects of all nutrients for clusters fsins
 mebn.plot_clusters(fsins_clusters, cluster_index, assumedpredictors, assumedtargets[assumedtargets$Name=="fsins",], NULL, feature_index, sort_by_amount = TRUE)
 ```
+So, based on this we have an evidence that there is group on patients in this dataset who has significantly larger blood insulin values on average and a major component affecting the raise is cholesterol medication.
 
 
 Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
@@ -501,6 +509,7 @@ Number of clusters with nutritional effects only
 library(stats)
 library(gridExtra)
 
+set.seed(fixed_seed)
 k.max <- 8
 wss_effects <- sapply(1:k.max, function(k){kmeans(personal_effects, k, nstart=50, iter.max = 15)$tot.withinss})
 wss_vars <- sapply(1:k.max, function(k){kmeans(personal_variations_from_mean, k, nstart=50, iter.max = 15)$tot.withinss})
@@ -531,6 +540,7 @@ source("mebn/MEBN.r")
 k <- 4
 
 # Clustering using k-means
+set.seed(fixed_seed)
 km <- kmeans(personal_variations_from_mean, centers = k)
 
 # Every patient can be assigned to some cluster based on how their reactions differ from average
@@ -542,12 +552,13 @@ cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
-```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=10, fig.height=10}
 
 # Number of cluster centers 
 k <- 4
 
 # Clustering using k-means
+set.seed(fixed_seed)
 km <- kmeans(personal_effects, centers = k)
 
 # Every patient can be assigned to some cluster also based on how their personal reactions types
@@ -560,17 +571,35 @@ sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient))
 variations_data <- as.data.frame(t(km$centers))
 cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+#mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, largest_personal_effects, feature_index)
+
 ```
 
+In clusters 1 and 2 there are patients whose blood insulin levels react on lower and on higher than average. One interesting difference is lignin's effect to the blood insulin.
+
+TODO: Can we take one of these groups and predict if new person belongs to these reaction groups?
 
 ### Predicting personal reaction type
 
 Finally, we can pick one the previously found reaction type clusters and hold aside the data for few of these patients. The goal would be then to use our model to predict the blood test values for this test group by their diet. This also reveals their personal reaction type for nutrition. We can compare this prediction to the true blood test values at dataset and also to the previous estimates from the whole sample population.
 
+```{r}
+table(sysdimet$effect_group)
+```
+
+For testing, we sample a holdout set of patients overall the dataset. We then train a model without this holdout set and test how accurately we can place the predicted reaction types in previously found clusters. Note that we don't know the true reaction types for these patients. This makes absolute testing of prediction performance impossible, but in this way we can see at least if the prediction is consistent with analysis of the whole dataset. We know the previous cluster assiments of these holdout patients.
+
 ```{r holdout_data}
-# TODO: ota esim. vain 10 tästä klusterista, jotta mallissa on mukana myös tämän klusterin potilaita 
-holdout_data <- sysdimet[sysdimet$variation_group==3,]
-training_data <- sysdimet[!(sysdimet$SUBJECT_ID %in% holdout_data$SUBJECT_ID),]
+library(loo)
+
+#holdout_data <- sysdimet[sysdimet$variation_group==3,]
+#training_data <- sysdimet[!(sysdimet$SUBJECT_ID %in% holdout_data$SUBJECT_ID),]
+
+# Split the data in 10 folds and take 1 for holdout and rest for training
+# All the observations from one patient is included in the fold
+holdout_data_idx <- kfold_split_stratified(K = 10, x = sysdimet$SUBJECT_ID)
+holdout_data <- sysdimet[holdout_data_idx==1,]
+training_data <- sysdimet[holdout_data_idx!=1,]
 ```
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
