@@ -8,17 +8,10 @@ data {
   matrix[N,p] X;    // fixed-effect design matrix
   matrix[N,k] Z;    // random-effect design matrix
   vector[N] Y;      // response
-  real offset;
+  real offset;      // constant added to intercept that keeps values positive 
   
-  // Holdout data for prediction
-
-  int<lower=0> N_new;       // number of holdout observations
-  matrix[N_new,p-1] X_new;  // fixed-effect design matrix (no intercept)
-  matrix[N_new,k] Z_new;    // random-effect design matrix (no intercept)
-  vector[N_new] Y_new;      // response
-  int<lower=1> J_new;       // number of groups in holdout data (persons)
-  int<lower=1,upper=J_new> group_new[N_new]; //group indicator
-  int<lower=0,upper=1> predict_with_holdout; // are these values used for prediction?
+  // indicates if observation is used for training (0) or prediction (1)
+  int<lower=0,upper=1> holdout[N]; 
   
   // Horseshoe prior data
   real<lower=0> scale_icept;    // prior std for the intercept
@@ -49,9 +42,7 @@ parameters {
   cholesky_factor_corr[k] L;      // Cholesky factor of group ranef corr matrix
   vector<lower=0>[k] sigma_b;     // group-level random-effect standard deviations
   vector[k] z[J];                 // unscaled group-level effects
-  vector[k] z_new[J_new];         // unscaled group-level effects
   real<lower=0> g_log_alpha;      // alpha (shape) parameter of the gamma distribution
-
   real ar1;                       // AR(1) coefficient
 
   // horseshoe shrinkage parameters 
@@ -63,14 +54,11 @@ parameters {
 
 transformed parameters {
   real<lower=0> g_alpha;          // alpha (shape) parameter of the gamma distribution
-  vector<lower=0>[N] g_beta;      // beta (rate) of Gamma distribution
   matrix[k, k] Sigma_b;           // variance-covariance matrix of group-level effects
   real<lower=0> sigma_e;          // residual standard deviations 
   vector[Pc] beta;                // poulation-level effects (fixed effects)
   vector[k] b[J];                 // group-level effects (random effects)
   
-  vector[N] e;                    // residuals
-
   // Regularized horseshoe parameters
   real<lower=0> c;                    // slab scale 
   vector<lower=0>[Pc] lambda_tilde;   // 'truncated' local shrinkage parameter 
@@ -95,46 +83,17 @@ transformed parameters {
   // - log transform alpha parameter to keep it positive
   g_alpha = g_log_alpha;
 
-  {  // scope for local variables
-    vector[N] mu; // local variable for mean of Normal distribution
-
-    // group variables for AR computation
-    int group_size = 0;
-    int current_group = -1;
-
-    // - mean, or typical correlation
-    mu = offset + temp_Intercept + Xc * beta;
-    
-    for (n in 1:N) 
-    {
-       if (current_group != group[n]) {
-         current_group = group[n];
-         group_size = 1;
-       } 
-       else
-         group_size += 1;
-  
-       // - add group effects
-       mu[n] += Z[n] * b[group[n]]; 
-  
-      // - residuals     
-      e[n] = Y[n] - mu[n]; 
-  
-      // - add autoregression coefficient from previous observation 
-      if (group_size > 1)
-        mu[n] += e[n-1] * ar1;
-
-      // - use identity link for mu
-      g_beta[n] = g_alpha / mu[n];
-    }  
-  } // local scope
-  
   // estimate of variance 
   // (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4024993/)
   sigma_e = log(1/g_alpha + 1);
 }
 
 model { 
+  vector[N] e;            // residuals
+  real mu;                // linear prediction 
+  real g_beta;            // beta (rate) of Gamma distribution
+  int group_size = 0;     // group variables for AR computation
+  int current_group = -1; // group variables for AR computation
   
   // Finnish Horseshoe (Regularized Horseshoe) prior
   // half-t priors for lambdas and tau, and inverse-gamma for c^2
@@ -151,50 +110,67 @@ model {
   for (j in 1:J)
     z[j] ~ normal(0,1);
 
-  // Predicted random effects
-  for (j in 1:J_new)
-    z_new[j] ~ normal(0,1);
-
-  // Likelihood: hierarchical gamma regression 
-
-  Y ~ gamma(g_alpha, g_beta);
-
-  // Predicted model for the holdout set
-
-  Y_new ~ gamma(g_alpha, g_beta);
+  for (n in 1:N) 
+  {
+    if (holdout[n] == 0)
+    {    
+      // typical effect
+      mu = offset + temp_Intercept + Xc[n] * beta;
+      
+      if (current_group != group[n]) {
+        current_group = group[n];
+        group_size = 1;
+      } 
+      else
+        group_size += 1;
   
+      // - add personal effects
+      mu += Z[n] * b[group[n]];
+    
+      // - calculate residuals     
+      e[n] = Y[n] - mu; 
+    
+      // - add autoregression coefficient from previous possibly correlated observation 
+      if (group_size > 1)
+        mu += e[n-1] * ar1;
+  
+      // - use identity link for mu
+      g_beta = g_alpha / mu;
+  
+      // Likelihood: hierarchical gamma regression 
+      Y[n] ~ gamma(g_alpha, g_beta);
+    }
+  }
 }
 
 generated quantities { 
   real beta_Intercept;            // population-level intercept 
-  //corr_matrix[k] C;               // correlation matrix 
+  //corr_matrix[k] C;             // correlation matrix 
   vector[N] Y_rep;                // repeated response
-  //vector[N] log_lik;              // log-likelihood for LOO
+  //vector[N] log_lik;            // log-likelihood for LOO
   real mu_hat;
   real g_beta_hat;
 
-  vector[N_new] Y_pred;           // repeated response
-  vector[k] b_pred[J_new];        // group-level effects (random effects) for new patients
-  vector[k-1] personal_effect[J_new];
+  vector[k-1] personal_effect[J];
 
   // Correlation matrix of random-effects, C = L'L
   //C = multiply_lower_tri_self_transpose(L); 
   
   //beta_Intercept = temp_Intercept - dot_product(means_X, beta) - offset;
- beta_Intercept = temp_Intercept + offset;
+  beta_Intercept = temp_Intercept + offset;
  
   // Posterior predictive distribution for model checking
 
-  for (n in 1:N_new)
+  for (n in 1:N)
   {
-      mu_hat = beta_Intercept + X_new[n] * beta + Z_new[n] * b[group[n]];
+      mu_hat = beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
       g_beta_hat = g_alpha / mu_hat;
       Y_rep[n] = gamma_rng(g_alpha, g_beta_hat);
   }
   
-  // sample personal effects for new patients
-  for (j in 1:J_new) 
+  // sample personal effects 
+  for (j in 1:J) 
   {
-    personal_effect[j] = beta + b_pred[j][2:k];
+    personal_effect[j] = beta + b[j][2:k];
   }
 } 

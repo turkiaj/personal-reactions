@@ -597,9 +597,17 @@ library(loo)
 
 # Split the data in 10 folds and take 1 for holdout and rest for training
 # All the observations from one patient is included in the fold
-holdout_data_idx <- kfold_split_stratified(K = 10, x = sysdimet$SUBJECT_ID)
-holdout_data <- sysdimet[holdout_data_idx==1,]
-training_data <- sysdimet[holdout_data_idx!=1,]
+holdout_index <- kfold_split_stratified(K = 10, x = sysdimet$SUBJECT_ID)
+
+holdout_fold <- 1
+
+holdout_index[holdout_index == holdout_fold] <- 1
+holdout_index[holdout_index != holdout_fold] <- 0
+
+obs_per_person <- 4
+holdout_persons <- holdout_index[seq(1, length(holdout_index),obs_per_person)]
+holdout_persons <- which(holdout_persons %in% 1) # index of subjects
+
 ```
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
@@ -620,19 +628,35 @@ shrinkage_parameters <- within(list(),
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
 
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
-                                   inputdata = training_data,
-                                   targetdata = holdout_data,
+                                   inputdata = sysdimet,
+                                   targetdata = holdout_index,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs_pred"), 
-                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred.stan",
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs_effpred"), 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_effpred.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 ```
+
+```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets[assumedtargets$Name=="fshdl",], sysdimet)
+```
+
+```{r}
+
+# get variation clusters of holdout persons
+#sysdimet$variation_group
+holdout_persons
+
+# TODO: näytä esim. ligniinin henkilökohtainen vaikutus insuliiniin ja onko se klusterin mukainen
+
+```
+
 
 ```{r, eval=FALSE}
 #remove("models_BLMM_gamma_ar1_rhs_pred_1_fshdl_blmm")

@@ -193,6 +193,54 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
   
   target_name <- as.vector(target_column$Name)
   
+  # Scale if the predictor is Gaussian
+  N <- nrow(inputdata)
+  
+  if (normalize_values == TRUE)
+  {
+    X <- sapply(1:nrow(assumedpredictors), mebn.scale_gaussians, data = inputdata, datadesc = assumedpredictors)
+    
+    # append intercept 
+    X <- cbind(rep(1,N), X)
+    
+    #Y <- scale(inputdata[target_name][,], center = FALSE, scale = TRUE)[,1]
+    #Y <- mebn.scale(inputdata[target_name], sd(inputdata[target_name][,]))[,]  
+    #Y <- mebn.normalize(inputdata[target_name], min(inputdata[target_name][,]), max(inputdata[target_name][,]))[,]  
+    Y <- inputdata[target_name][,]
+  }
+  else
+  {
+    X <- cbind(rep(1,N), apply(predictors, 2, ident))
+    Y <- inputdata[target_name][,]
+  }
+  
+  params <- within(list(),
+                   {
+                     N <- N
+                     X <- X
+                     p <- k <- ncol(X)               # all predictors may have random effects
+                     Y <- Y
+                     Z <- X     
+                     J <- length(levels(inputdata[[group_column]]))
+                     group <- as.integer(inputdata[[group_column]])
+                     holdout <- targetdata
+                     offset <- 15
+                   })
+  
+  params <- c(params, reg_params)
+  
+  return(params)
+}
+
+##################################################
+
+mebn.set_model_parameters2 <- function(predictor_columns, target_column, group_column, inputdata, targetdata = NULL, normalize_values, reg_params = NULL)
+{
+  ident <- function(x) { return (x) }
+  predictors <- inputdata[as.vector(predictor_columns$Name)]
+  
+  target_name <- as.vector(target_column$Name)
+  
   prior_sigma <- rep(-1, nrow(predictor_columns))
   dim(prior_sigma) <- nrow(predictor_columns)
   prior_mean <- rep(0, nrow(predictor_columns))
@@ -534,7 +582,6 @@ mebn.sampling <- function(inputdata, targetdata, predictor_columns, target_colum
   {
     stanDat <- mebn.set_model_parameters(predictor_columns, target_column, group_column, inputdata, targetdata, normalize_values, reg_params)
 
-    initlist <- list(list(beta_Intercept=50),list(beta_Intercept=2),list(beta_Intercept=2),list(beta_Intercept=2))    
     localfit <- stan(file=stan_mode_file, data=stanDat, warmup = 1000, iter=2000, chains=4, init=0, control = list(adapt_delta = 0.80, max_treedepth = 12))
     
     modelcache <- paste0(local_model_cache, "/", target_name, "_blmm", ".rds")
@@ -995,10 +1042,13 @@ mebn.plot_clusters <- function(cluster_data, clusters_index, assumedpredictors, 
   
   # Prepare data from plotting 
   plot_data <- cluster_data.filtered[c("effect")]
-  plot_data$amount <- cluster_data.filtered$'1'
-  plot_data$cluster <- 1
+
+  i <- cluster_index[1]
+  plot_data$amount <- cluster_data.filtered[as.character(i)][,]
+  #plot_data$amount <- cluster_data.filtered$'1'
+  plot_data$cluster <- i
   
-  for (i in clusters_index)
+  for (i in cluster_index[-c(1)])
   {
     temp_data <- cluster_data.filtered[c("effect")]
     temp_data$amount <- cluster_data.filtered[as.character(i)][,]
