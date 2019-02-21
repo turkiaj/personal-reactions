@@ -214,9 +214,16 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
     Y <- inputdata[target_name][,]
   }
   
+  NH <- 0 
+  if (!is.null(targetdata))
+  {
+    NH <- sum(holdout_index[holdout_index == 1])
+  }
+  
   params <- within(list(),
                    {
                      N <- N
+                     NH <- NH
                      X <- X
                      p <- k <- ncol(X)               # all predictors may have random effects
                      Y <- Y
@@ -346,13 +353,17 @@ mebn.localsummary <- function(fit)
   #draws <- extract(fit)
   
   #  mean      se_mean         sd          10%         90%     n_eff      Rhat
-  ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90))
-
+  #ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90), na.rm = TRUE)
+  ms <- summary(fit, pars=c("beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90), na.rm = TRUE)
+  
   ModelSummary <- within(list(),
     {
-      intmean       <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[1]
-      intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[4]
-      intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[5]
+      #intmean       <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[1]
+      #intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[4]
+      #intmean_uCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[5]
+      intmean       <- 0
+      intmean_lCI   <- 0
+      intmean_uCI   <- 0
       fixef         <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,1]
       fixef_lCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,4]
       fixef_uCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,5]
@@ -367,6 +378,26 @@ mebn.localsummary <- function(fit)
   # Create matrix D
   #sdM <- diag(ModelSummary$ranef_sd)
   #ModelSummary$D <- sdM %*% ModelSummary$C %*% t(sdM)
+  
+  return(ModelSummary)
+}
+
+##################################################
+
+mebn.personal_effects <- function(fit, person_id)
+{
+  #  mean      se_mean         sd          10%         90%     n_eff      Rhat
+  ms <- summary(fit, pars=c("b", "personal_effect"), probs=c(0.10, 0.90))
+  
+  ModelSummary <- within(list(),
+                         {
+                           b       <- round(ms$summary[startsWith(rownames(ms$summary),paste0("b[", person_id, ",")),1], 5)
+                           b_lCI   <- round(ms$summary[startsWith(rownames(ms$summary),paste0("b[", person_id, ",")),4], 5)
+                           b_uCI   <- round(ms$summary[startsWith(rownames(ms$summary),paste0("b[", person_id, ",")),5], 5)
+                           personal_effect         <- round(ms$summary[startsWith(rownames(ms$summary), paste0("personal_effect[", person_id, ",")),1], 5)
+                           personal_effect_lCI     <- round(ms$summary[startsWith(rownames(ms$summary), paste0("personal_effect[", person_id, ",")),4], 5)
+                           personal_effect_uCI     <- round(ms$summary[startsWith(rownames(ms$summary), paste0("personal_effect[", person_id, ",")),5], 5)
+                         })
   
   return(ModelSummary)
 }
@@ -802,12 +833,8 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
     
     localfit <- mebn.get_localfit(paste0(local_model_cache, target_name))
 
-    # extract estimations for specific person
-    posterior <- extract(localfit, pars = c("personal_effect", "b"))
-    b_blmm <- colMeans(posterior$b)
-    beta_b_blmm <- colMeans(posterior$personal_effect)
-    
-    #pe <- summary(target_blmm, pars="personal_effect", probs = c(0.05, 0.95))$summary[,c(1,4,5)]
+    # extract personal effects from the local distribution
+    pe <- mebn.personal_effects(localfit, person_id)
     
     # - Loop through betas for current target
     predictor_names <- as.vector(predictor_columns$Name)
@@ -818,17 +845,17 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
       
       # Attach the random variable
       reaction_graph <- reaction_graph + edge(c(predictor_name, target_name),
-                                              weight = beta_b_blmm[person_id,p], 
-                                              b = b_blmm[person_id,p],
-                                              mean = beta_b_blmm[person_id,p])
+                                              weight = pe$personal_effect[p], 
+                                              b = pe$b[p],
+                                              mean = pe$personal_effect[p])
       
       # Personal effect (beta + b)
       reaction_graph <- reaction_graph + vertex(paste0("personal_", predictor_name, "_", target_name), 
                                                 label=paste0("personal_", predictor_name), 
                                                 type="personal", color="#AAAAAA", 
-                                                value = beta_b_blmm[person_id,p], 
-                                                value_lCI = 0,
-                                                value_uCI = 0,
+                                                value = pe$personal_effect[p], 
+                                                value_lCI = pe$personal_effect_lCI[p],
+                                                value_uCI = pe$personal_effect_uCI[p],
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("personal_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "personal") 
@@ -837,9 +864,9 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
       reaction_graph <- reaction_graph + vertex(paste0("b_", predictor_name, "_", target_name), 
                                                 label=paste0("b_", predictor_name), 
                                                 type="b", color="#AAAAAA", 
-                                                value = b_blmm[person_id,p], 
-                                                value_lCI = 0,
-                                                value_uCI = 0,
+                                                value = pe$b[p], 
+                                                value_lCI = pe$b_lCI[p],
+                                                value_uCI = pe$b_lCI[p],
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "b") 
@@ -947,10 +974,12 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
   V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
-  # Color and size encoding for edges according to beta coefficient
+  # Color and size encoding for edges according to beta + b coefficients
+  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
+  
+  
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
   E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
-  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
   
   plot(visual_graph, 
        layout=bipa_layout, 

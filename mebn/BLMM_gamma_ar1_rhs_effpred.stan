@@ -1,6 +1,7 @@
 
 data { 
-  int<lower=0> N;   // number of observations
+  int<lower=0> N;   // number of all observations
+  int<lower=0> NH;  // number of holdout observations
   int<lower=1> p;   // number of predictors
   int<lower=1> J;   // number of groups in data (persons)
   int<lower=1> k;   // number of group-level predictors
@@ -54,10 +55,10 @@ parameters {
 
 transformed parameters {
   real<lower=0> g_alpha;          // alpha (shape) parameter of the gamma distribution
-  matrix[k, k] Sigma_b;           // variance-covariance matrix of group-level effects
   real<lower=0> sigma_e;          // residual standard deviations 
   vector[Pc] beta;                // poulation-level effects (fixed effects)
   vector[k] b[J];                 // group-level effects (random effects)
+  matrix[k, k] Sigma_b;           // variance-covariance matrix of group-level effects
   
   // Regularized horseshoe parameters
   real<lower=0> c;                    // slab scale 
@@ -67,7 +68,7 @@ transformed parameters {
   c = slab_scale * sqrt(caux);
   lambda_tilde = sqrt(c^2 * square(lambda) ./ (c^2 + tau^2* square(lambda)));
   beta = zbeta .* lambda_tilde * tau;
-  
+
   // Premultiply diagonal matrix [sigma_b] with the Cholesky decomposition L of
   // the correlation matrix Sigma_b to get variance-covariance matrix of group-level effects
 
@@ -110,35 +111,37 @@ model {
   for (j in 1:J)
     z[j] ~ normal(0,1);
 
+  // Calculate posterior probability with training data only
   for (n in 1:N) 
   {
+    // typical effect
+    mu = offset + temp_Intercept + Xc[n] * beta;
+    
+    if (current_group != group[n]) {
+      current_group = group[n];
+      group_size = 1;
+    } 
+    else
+      group_size += 1;
+
+    // - add personal effects
+    mu += Z[n] * b[group[n]];
+  
+    // - calculate residuals     
+    e[n] = Y[n] - mu; 
+  
+    // - add autoregression coefficient from previous possibly correlated observation 
+    if (group_size > 1)
+      mu += e[n-1] * ar1;
+
+    // - use identity link for mu
+    g_beta = g_alpha / mu;
+  
     if (holdout[n] == 0)
     {    
-      // typical effect
-      mu = offset + temp_Intercept + Xc[n] * beta;
-      
-      if (current_group != group[n]) {
-        current_group = group[n];
-        group_size = 1;
-      } 
-      else
-        group_size += 1;
-  
-      // - add personal effects
-      mu += Z[n] * b[group[n]];
-    
-      // - calculate residuals     
-      e[n] = Y[n] - mu; 
-    
-      // - add autoregression coefficient from previous possibly correlated observation 
-      if (group_size > 1)
-        mu += e[n-1] * ar1;
-  
-      // - use identity link for mu
-      g_beta = g_alpha / mu;
-  
       // Likelihood: hierarchical gamma regression 
-      Y[n] ~ gamma(g_alpha, g_beta);
+      //Y[n] ~ gamma(g_alpha, g_beta);
+      target += gamma_lpdf(Y[n] | g_alpha, g_beta);
     }
   }
 }
@@ -146,26 +149,34 @@ model {
 generated quantities { 
   real beta_Intercept;            // population-level intercept 
   //corr_matrix[k] C;             // correlation matrix 
-  vector[N] Y_rep;                // repeated response
+  vector[N-NH] Y_rep;               // repeated response
   //vector[N] log_lik;            // log-likelihood for LOO
   real mu_hat;
   real g_beta_hat;
+  int i;
 
   vector[k-1] personal_effect[J];
 
   // Correlation matrix of random-effects, C = L'L
   //C = multiply_lower_tri_self_transpose(L); 
   
-  //beta_Intercept = temp_Intercept - dot_product(means_X, beta) - offset;
-  beta_Intercept = temp_Intercept + offset;
- 
   // Posterior predictive distribution for model checking
 
+  i = 1;
   for (n in 1:N)
   {
+    if (holdout[n] == 0)
+    { 
+      //beta_Intercept = temp_Intercept - dot_product(means_X, beta);
+      beta_Intercept = temp_Intercept + offset;
+
+      //mu_hat = offset + temp_Intercept + Xc[n] * beta + Z[n] * b[group[n]];
       mu_hat = beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
+      
       g_beta_hat = g_alpha / mu_hat;
-      Y_rep[n] = gamma_rng(g_alpha, g_beta_hat);
+      Y_rep[i] = gamma_rng(g_alpha, g_beta_hat);
+      i = i + 1;      
+    }
   }
   
   // sample personal effects 

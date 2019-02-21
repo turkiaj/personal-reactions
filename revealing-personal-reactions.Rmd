@@ -274,6 +274,9 @@ source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
 
+
+# TODO: plot varcov-matrix Sigma_b (ggplot2 heatmap)
+
 ##Clusters of personal graphs
 
 Although there are personal differences, it is likely that not everyone behave uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
@@ -592,12 +595,14 @@ For testing, we sample a holdout set of patients overall the dataset. We then tr
 ```{r holdout_data}
 library(loo)
 
+set.seed(fixed_seed)
+
 #holdout_data <- sysdimet[sysdimet$variation_group==3,]
 #training_data <- sysdimet[!(sysdimet$SUBJECT_ID %in% holdout_data$SUBJECT_ID),]
 
 # Split the data in 10 folds and take 1 for holdout and rest for training
 # All the observations from one patient is included in the fold
-holdout_index <- kfold_split_stratified(K = 10, x = sysdimet$SUBJECT_ID)
+holdout_index <- kfold_split_stratified(K = 20, x = sysdimet$SUBJECT_ID)
 
 holdout_fold <- 1
 
@@ -607,6 +612,7 @@ holdout_index[holdout_index != holdout_fold] <- 0
 obs_per_person <- 4
 holdout_persons <- holdout_index[seq(1, length(holdout_index),obs_per_person)]
 holdout_persons <- which(holdout_persons %in% 1) # index of subjects
+holdout_persons
 
 ```
 
@@ -630,6 +636,9 @@ Next we fit the previous model with the Finnish horseshoe added. Besides the shr
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 
+temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
+
+initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    targetdata = holdout_index,
@@ -644,42 +653,82 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
 ```
 
 ```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets[assumedtargets$Name=="fshdl",], sysdimet)
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
 ```{r}
 
 # get variation clusters of holdout persons
-#sysdimet$variation_group
-holdout_persons
+
+sysdimet$subject_idnum <- as.numeric(substr(sysdimet$SUBJECT_ID,2,5))
+sysdimet[sysdimet$subject_idnum %in% holdout_persons,]$subject_idnum
 
 # TODO: näytä esim. ligniinin henkilökohtainen vaikutus insuliiniin ja onko se klusterin mukainen
 
+# Näytä holdout-potilaan mittauksia ja miten reagointitapa ennuste sopii niihin (scatterplot?)
+
 ```
 
-
-```{r, eval=FALSE}
-#remove("models_BLMM_gamma_ar1_rhs_pred_1_fshdl_blmm")
+```{r personal_graph1}
 source("mebn/MEBN.r")
-library(rstan)
-library(bayesplot)
-  
-fit1  <- mebn.get_localfit("BLMM_gamma/ar1_rhs_pred/36/fshdl")
 
-fshdl.true <- holdout_data$fshdl
-pred_post <- extract(fit1, pars = c("Y_pred"))
-post_50 <- na.omit(pred_post$Y_pred[seq(2000,4000,10),])
+# TODO: Create personal graph by adding nodes for personal effects
+# We already have nodes for b_sigma-hyperparameters, now we add values for b_mu. Random variables b are normally distributed.
+person_id <-9
+localfit <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
 
-fshdl.true
-colMeans(na.omit(pred_post$Y_pred))
+pe <- mebn.personal_effects(localfit, person_id)
+pe$b_lCI[4]
 
-# Can we predict how this person reacts? What nutrients increase or decrease values on average?
+# This is a predicted personal reaction graph of patient in certain cluster
 
-#ppc_dens_overlay(fshdl.true, post_50) + 
-#coord_cartesian(xlim = c(0,5.0)) +
-#ggtitle("fshdl S36")
+personal_graph9 <- mebn.personal_graph(person_id = 9, 
+                                       reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
+                                       predictor_columns = assumedpredictors, 
+                                       assumed_targets = assumedtargets, 
+                                       local_model_cache = "models/BLMM_gamma/ar1_rhs_effpred/")
+```
+
+
+```{r personal_graphvisu1, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+source("mebn/MEBN.r")
+mebn.plot_personal_effects(personal_graph1, 15)
+```
+
+
+Compare lignin to insulin effect of two patients who were previously found to be in different clusters
+
+```{r, echo=FALSE, eval=FALSE}
+source("mebn/MEBN.r")
+
+# TODO: tee "localsummaryn" tyyppinen funktio, jolla voi hakea mallista ennusteet
+
+#mebn.personal_effects
+
+#sysdimet[sysdimet$effect_group == 1,]$SUBJECT_ID
+subject_id <- 10
+
+sakkar_id <- match("sakkar", datadesc$Name)
+hhydr_id <- match("hhydr", datadesc$Name)
+
+fshdl_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
+fsldl_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsldl")
+
+s <- mebn.localsummary(fshdl_blmm)
+s
+posterior <- as.array(fshdl_blmm)
+posterior
+
+sakkar_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",sakkar_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("sakkaroosi") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+hhydr_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",hhydr_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("hiilihydraatti") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+bayesplot_grid(plots = list(sakkar_plot, hhydr_plot), legends = FALSE)
 
 ```
+
 
 Bayes R2
 
