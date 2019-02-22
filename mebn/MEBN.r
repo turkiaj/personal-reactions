@@ -353,17 +353,13 @@ mebn.localsummary <- function(fit)
   #draws <- extract(fit)
   
   #  mean      se_mean         sd          10%         90%     n_eff      Rhat
-  #ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90), na.rm = TRUE)
-  ms <- summary(fit, pars=c("beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90), na.rm = TRUE)
-  
+  ms <- summary(fit, pars=c("beta_Intercept", "beta", "sigma_b", "sigma_e"), probs=c(0.10, 0.90), na.rm = TRUE)
+
   ModelSummary <- within(list(),
     {
-      #intmean       <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[1]
-      #intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[4]
-      #intmean_uCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[5]
-      intmean       <- 0
-      intmean_lCI   <- 0
-      intmean_uCI   <- 0
+      intmean       <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[1]
+      intmean_lCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[4]
+      intmean_uCI   <- round(ms$summary[rownames(ms$summary) %in% "beta_Intercept",],5)[5]
       fixef         <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,1]
       fixef_lCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,4]
       fixef_uCI     <- round(ms$summary[startsWith(rownames(ms$summary), "beta["),],5)[,5]
@@ -686,10 +682,10 @@ mebn.write_gexf <- function(reaction_graph, gexf_path)
     colnames(edgesatt) <- c("value", "value_lCI", "value_uCI", "b_sigma", "b_sigma_lCI", "b_sigma_uCI")
   }
   
-  nodesatt <- data.frame(V(reaction_graph)$value, V(reaction_graph)$value_lCI, V(reaction_graph)$value_uCI)
-  if (length(nodesatt) == 3)  
+  nodesatt <- data.frame(V(reaction_graph)$value, V(reaction_graph)$value_lCI, V(reaction_graph)$value_uCI,V(reaction_graph)$type)
+  if (length(nodesatt) == 4)  
   {
-    colnames(nodesatt) <- c("value", "value_lCI", "value_uCI")
+    colnames(nodesatt) <- c("value", "value_lCI", "value_uCI", "type")
   }
   
   #edgelabels <- data.frame(paste0("beta = ", round(E(reaction_graph)$mean, 3), ", b_sigma = ", round(2*(E(reaction_graph)$uCI - E(reaction_graph)$mean), 3)))

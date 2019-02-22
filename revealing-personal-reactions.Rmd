@@ -184,7 +184,7 @@ normal_vs_gamma
 # https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
 
-Is P(D|G_i) = SUM(ELPD_i)?
+( Is P(D|G_i) = SUM(ELPD_i)? )
 
 As the expected log predictive density (ELPD) of gamma model is higher, we should choose that for further development.
 
@@ -203,6 +203,7 @@ sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph,
                                    normalize_values = TRUE)
 
 mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_ar1.gexf")
+write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_ar1.graphml", "graphml")
 
 # FSINS and FPLUK-models had undefined values in beta_Intercept and few in C-matrix. Maybe offset-value should be bigger?
 ```
@@ -236,10 +237,11 @@ mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 
 Beside the typical effects, our main interest lies on the personal effects \b and their variances {\b_sigma}. If there is a large variance for the personal effect it means that there exists personal differences in reaction types. These differences are our main interest to find.
 
-In this dataset there exist 20*5=100 possible effect between nutrients and blood tests. For finding the most interesting effects with most personal variance, we extract and sort b_sigma-hyperparameters from the graph.
+In this dataset there exist 20*5=100 possible effects between nutrients and blood tests. For finding the most interesting effects with most personal variance, we extract and sort b_sigma-hyperparameters from the graph.
 
 ```{r, echo=TRUE, eval=TRUE}
-#sysdimet_gamma_ar1 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") ei lue oikein?
+#sysdimet_gamma_ar10 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") 
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
 
 # Query the graph for personal variances, denoted by b_sigma-nodes
 allnodes <- V(sysdimet_gamma_ar1)
@@ -636,8 +638,6 @@ Next we fit the previous model with the Finnish horseshoe added. Besides the shr
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 
-temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
-
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -672,27 +672,33 @@ sysdimet[sysdimet$subject_idnum %in% holdout_persons,]$subject_idnum
 ```{r personal_graph1}
 source("mebn/MEBN.r")
 
-# TODO: Create personal graph by adding nodes for personal effects
-# We already have nodes for b_sigma-hyperparameters, now we add values for b_mu. Random variables b are normally distributed.
-person_id <-9
-localfit <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
-
-pe <- mebn.personal_effects(localfit, person_id)
-pe$b_lCI[4]
-
 # This is a predicted personal reaction graph of patient in certain cluster
+
+# This method adds (or should add) values of b and personal nodes to a typical graph
 
 personal_graph9 <- mebn.personal_graph(person_id = 9, 
                                        reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
-                                       local_model_cache = "models/BLMM_gamma/ar1_rhs_effpred/")
+                                       local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
 ```
+
+```{r}
+
+personal_graph9
+
+write.graph(personal_graph9, "personal_graph_9.graphml", "graphml")
+
+p9 <- read.graph("personal_graph_9.graphml", "graphml")
+p9
+
+```
+
 
 
 ```{r personal_graphvisu1, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
-mebn.plot_personal_effects(personal_graph1, 15)
+mebn.plot_personal_effects(personal_graph9, 15)
 ```
 
 
