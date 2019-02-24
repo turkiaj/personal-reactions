@@ -76,8 +76,6 @@ assumedtargets <- datadesc[datadesc$Order==200,]
 ```
 
 ```{r graph, fig.height = 8, fig.width = 10, fig.align = "center"}
-source("mebn/MEBN.r")
-
 library(igraph)
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 
@@ -120,23 +118,23 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph,
 
 ```
 
-We can asses the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
+We can assess the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
 
-```{r normal_model_ppc, echo=FALSE, eval=TRUE, message=FALSE, cache=TRUE}
-normal_targets <- assumedtargets
+```{r normal_model_ppc, fig.height = 4, fig.width = 6, fig.align = "center", echo=FALSE, eval=TRUE, message=FALSE, cache=TRUE}
+normal_targets <- assumedtargets[assumedtargets$Name=="fshdl",]
 normal_targets$ScaleMin <- -10
-normal_targets$ScaleMax <- 50
+normal_targets$ScaleMax <- 25
 
 mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 ```
 
 **Developing the model**
 
-# TODO: Käy läpi tähän asti kaavat ym. ja jatka Gamma-mallin kanssa..
-
-
 - Biometric data is usually more multiplicative than additive. This is why log-normal distribution makes sense.
   Log-normal / Gamma
+  
+  https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0021403
+  Citation: Limpert E, Stahel WA (2011) Problems with Using the Normal Distribution – and Ways to Improve Quality and Efficiency of Data Analysis. PLoS ONE 6(7): e21403. https://doi.org/10.1371/journal.pone.0021403
   
 - We use identity link as it keeps the regression coefficients on the same absolute scale than with Gaussian models
 
@@ -190,7 +188,20 @@ As the expected log predictive density (ELPD) of gamma model is higher, we shoul
 
 ##Varying response time: AR-structures##
 
-```{r graph_with_gamma_ar1, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+```
+...
+    // - calculate residuals     
+    e[n] = Y[n] - mu[n]; 
+
+    // - estimate autoregression coefficient for observations of one patient 
+    if (group_size > 1)
+      mu[n] += e[n-1] * ar1;
+      
+...      
+```
+
+
+```{r graph_with_gamma_ar1, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -205,7 +216,6 @@ sysdimet_gamma_ar1 <- mebn.bipartite_model(reaction_graph = initial_graph,
 mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_ar1.gexf")
 write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_ar1.graphml", "graphml")
 
-# FSINS and FPLUK-models had undefined values in beta_Intercept and few in C-matrix. Maybe offset-value should be bigger?
 ```
 
 ```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
@@ -239,7 +249,7 @@ Beside the typical effects, our main interest lies on the personal effects \b an
 
 In this dataset there exist 20*5=100 possible effects between nutrients and blood tests. For finding the most interesting effects with most personal variance, we extract and sort b_sigma-hyperparameters from the graph.
 
-```{r, echo=TRUE, eval=TRUE}
+```{r, echo=FALSE, message=FALSE, eval=TRUE}
 #sysdimet_gamma_ar10 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") 
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
 
@@ -259,7 +269,7 @@ personal_variances$"CI-90%" <- b_sigma$value_uCI
 
 ordered_personal_variance <- personal_variances[order(-personal_variances$variance),]
 
-head(ordered_personal_variance, 40)
+head(ordered_personal_variance, 20)
 ```
 
 Let us the examine closer those of the effects that have most probable variance over 0.30
@@ -272,12 +282,10 @@ number_of_varying_effects <- nrow(effects_with_most_variance)
 For better undestanding, we can also visualize these personal variances again as a graph
 
 ```{r personal_variations_figure, fig.height = 8, fig.width = 10, fig.align = "center", cache = TRUE}
-source("mebn/MEBN.r")
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
 
-
-# TODO: plot varcov-matrix Sigma_b (ggplot2 heatmap)
+TODO: plot varcov-matrix Sigma_b (ggplot2 heatmap)
 
 ##Clusters of personal graphs
 
@@ -285,7 +293,7 @@ Although there are personal differences, it is likely that not everyone behave u
 
 We can now take the personal estimations of the effects and see, if they form clusters
 
-```{r kmeans_dfs, echo=FALSE, cache=FALSE}
+```{r kmeans_dfs, echo=FALSE, cache=FALSE, message=FALSE}
 library(rstan)
 
 # Pick these predictors as features for clustering -- get all
@@ -297,6 +305,8 @@ personal_effects <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), 
 modelcache <- "BLMM_gamma/ar1/"
 
 # We could fetch a personal graph for all patients, but it is more effective to extract estimations directly from MCMC-samples to data frames
+# TODO: use mebn.personal_effects. Do we need CIs here?
+
 
 for (i in c(1:nrow(assumedtargets)))
 {
@@ -470,7 +480,7 @@ So, based on this we have an evidence that there is group on patients in this da
 
 Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
 
-```{r}
+```{r, echo=FALSE, eval=TRUE,message=FALSE}
 feature_index <- feature_index[-c(match("sukupuoli", assumedpredictors$Name), 
                                   match("kolestrolilaakitys", assumedpredictors$Name))]
 
@@ -594,7 +604,7 @@ table(sysdimet$effect_group)
 
 For testing, we sample a holdout set of patients overall the dataset. We then train a model without this holdout set and test how accurately we can place the predicted reaction types in previously found clusters. Note that we don't know the true reaction types for these patients. This makes absolute testing of prediction performance impossible, but in this way we can see at least if the prediction is consistent with analysis of the whole dataset. We know the previous cluster assiments of these holdout patients.
 
-```{r holdout_data}
+```{r holdout_data, echo=FALSE, eval=TRUE, message=FALSE}
 library(loo)
 
 set.seed(fixed_seed)
@@ -635,7 +645,7 @@ shrinkage_parameters <- within(list(),
 
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
-```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
@@ -652,7 +662,7 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    normalize_values = TRUE)
 ```
 
-```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
@@ -683,7 +693,7 @@ personal_graph9 <- mebn.personal_graph(person_id = 9,
                                        local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
 ```
 
-```{r}
+```{r, eval=FALSE, echo=FALSE}
 
 personal_graph9
 
@@ -704,41 +714,23 @@ mebn.plot_personal_effects(personal_graph9, 15)
 
 Compare lignin to insulin effect of two patients who were previously found to be in different clusters
 
-```{r, echo=FALSE, eval=FALSE}
+```{r, echo=FALSE, eval=TRUE, cache=TRUE}
 source("mebn/MEBN.r")
 
-# TODO: tee "localsummaryn" tyyppinen funktio, jolla voi hakea mallista ennusteet
+subject_id <- 9
+lignin_id <- match("ligniini", datadesc$Name)
 
-#mebn.personal_effects
+fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
+posterior <- as.array(fsins_blmm)
 
-#sysdimet[sysdimet$effect_group == 1,]$SUBJECT_ID
-subject_id <- 10
-
-sakkar_id <- match("sakkar", datadesc$Name)
-hhydr_id <- match("hhydr", datadesc$Name)
-
-fshdl_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
-fsldl_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsldl")
-
-s <- mebn.localsummary(fshdl_blmm)
-s
-posterior <- as.array(fshdl_blmm)
-posterior
-
-sakkar_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",sakkar_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("sakkaroosi") +
+lignin_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("probability") + ggtitle("lignin") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
-hhydr_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",hhydr_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("todennäköisyys") + ggtitle("hiilihydraatti") +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
-
-bayesplot_grid(plots = list(sakkar_plot, hhydr_plot), legends = FALSE)
+bayesplot_grid(plots = list(lignin_plot), legends = FALSE)
 
 ```
 
-
-Bayes R2
-
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE}
 
 # Andrew Gelman, Ben Goodrich, Jonah Gabry, and Aki Vehtari (2018). R-squared for Bayesian regression models. The American Statistician
 # https://doi.org/10.1080/00031305.2018.1549100
