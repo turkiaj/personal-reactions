@@ -5,8 +5,8 @@ author:
 - University of Eastern Finland
 bibliography: biblio.bib
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 abstract: This notebook describes the implementation of the modelling method and the experimental analysis that is described in the main article.
 ---
 
@@ -51,7 +51,7 @@ The joint probability of the graph \(P(G|D)\) can furthermore factorized into se
 
 **Hierarchical estimation of the local distributions**. We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
 
-Concretely, we can use generalized linear mixed-effect models to describe the local probability distributions of the Bayesian network. We assume that every  random variable at the network can be explaned with a probability distribution from an exponential family of distributions with linear link function with input from its parent nodes. We furthermore assume that the effect between variables can be factorized into typical and personal parts. Here typical part of the effect is denoted with coefficient \beta_i and personal part as \b_i
+Concretely, we can use generalized linear mixed-effect models to describe the local probability distributions of the Bayesian network. We assume that every  random variable at the network can be explaned with a probability distribution from an exponential family of distributions with linear link function with input from its parent nodes. We furthermore assume that the effect between variables can be factorized into typical and personal parts. Here typical part of the effect is denoted with coefficient $\beta$ and personal part as $b$
 
 \begin{align}
 \begin{split}
@@ -75,7 +75,7 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
-```{r graph, fig.height = 8, fig.width = 10, fig.align = "center"}
+```{r graph, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE}
 library(igraph)
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 
@@ -101,7 +101,7 @@ plot(initial_graph,
 
 ```
 
-We assume a connection from every nutrient and personal information to every blood test value at the dataset. The model search is then focused on to estimating optimal coefficients \beta and \b_i that we use to define the strength of the connection. It is also important to find correct probability distributions for the random variables.
+We assume a connection from every nutrient and personal information to every blood test value at the dataset. The model search is then focused on to estimating optimal coefficients $\beta$ and $b$ that we use to define the strength of the connection. It is also important to find correct probability distributions for the random variables.
 
 Our starting assumption is that both nutrients and the blood test values are normally distributed. This assumption is naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
 
@@ -165,7 +165,7 @@ sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph,
 mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/", assumedtargets, sysdimet)
 ```
 
-As we see here, the regression coefficients {\beta} are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
+As we see here, the regression coefficients are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
 
 ```{r effect_comparison}
 beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
@@ -227,6 +227,8 @@ ar0_vs_ar1 <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/hierarchical_idlin
 ar0_vs_ar1
 ```
 
+The estimated value of lag 1 autocorrelation indicates how much the successive measurements are correlated. For the responses fS-HDL, fS-Kol and fP-Gluk the positive AR1-coefficient indicates that the effect of nutrition spans longer than one week 
+
 ```{r ar1_comparison, message=FALSE, warning=FALSE, cache=TRUE}
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ar1_comparison
@@ -237,7 +239,7 @@ ar1_comparison
 
 We have now reached a reasonable good fit for the local distributions of the Bayesian network. Our code has extracted a graphical model from these full posterior distributions of random variables and parameters. The graph consists mean values of the posteriors and also their credible intervals. This is a lighter data structure for further analysis and allows also graph operations besides the regression modeling. 
 
-Besides the random variables, the graph also includes the regression coefficients \beta and \b that denote the typical and personal magnitudes of effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients \beta as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test.
+Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test.
 
 ```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
@@ -245,11 +247,12 @@ mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 
 #Personal effects
 
-Beside the typical effects, our main interest lies on the personal effects \b and their variances {\b_sigma}. If there is a large variance for the personal effect it means that there exists personal differences in reaction types. These differences are our main interest to find.
+Beside the typical effects, our main interest lies on the personal effects $b$ and their variances $\sigma_b$. If there is a large variance for the personal effect it means that there exists personal differences in reaction types. These differences are our main interest to find.
 
 In this dataset there exist 20*5=100 possible effects between nutrients and blood tests. For finding the most interesting effects with most personal variance, we extract and sort b_sigma-hyperparameters from the graph.
 
 ```{r, echo=FALSE, message=FALSE, eval=TRUE}
+library(igraph)
 #sysdimet_gamma_ar10 <- mebn.read_gexf("sysdimet_gamma_ar1.gexf") 
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
 
@@ -352,9 +355,10 @@ largest_personal_effects$response <- rep(assumedtargets$Description[t_idx], nper
 
 largest_personal_effects$effect <- paste0(largest_personal_effects$predictor," -> ", largest_personal_effects$response)
 
-largest_personal_effects <- largest_personal_effects[largest_personal_effects$abs_amount > 2,]
+largest_personal_effects <- largest_personal_effects[largest_personal_effects$abs_amount > 0,]
 largest_personal_effects <- largest_personal_effects[order(-largest_personal_effects$abs_amount),]
 largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
+
 
 ```
 
@@ -416,7 +420,7 @@ Cholesterol medication seems to dominate the clusters. There are patients for wh
 
 Let's see how the clustering shows with absolute effects rather than difference from mean. Note that these are not the greatest effects, but those with most personal variance.
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=7, fig.height=15, cache=TRUE}
+```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=8, fig.height=10, cache=TRUE}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -460,7 +464,7 @@ There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking ch
 
 Let's try to confirm this finding by visualizing the components of insulin variance.
 
-```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=10, fig.height=6, cache=TRUE}
+```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=8, fig.height=10, cache=TRUE}
 source("mebn/MEBN.r")
 
 # get indexes of personal effects for fsins in variations_data vector
@@ -567,7 +571,7 @@ cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
-```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=10, fig.height=10}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=8, fig.height=10}
 
 # Number of cluster centers 
 k <- 4
@@ -625,8 +629,38 @@ obs_per_person <- 4
 holdout_persons <- holdout_index[seq(1, length(holdout_index),obs_per_person)]
 holdout_persons <- which(holdout_persons %in% 1) # index of subjects
 holdout_persons
+```
+
+```{r mebn_personal_effects}
+lignin_fsins <- largest_personal_effects[largest_personal_effects$effect=="lignin -> blood insulin",]
+lignin_fsins[order(-lignin_fsins$amount),]
+
+# TODO: Etsi potilaat, jotka reagoivat näin eri tavoin ja piirrä heidän verkkonsa sekä tämän reagoinnin posterior
+
+# personal_effects-data framessa jokainen rivi vastaa subject_id:ta
+# nyt siitä pitäisi hakea ääriarvot kuten "largest_personal_effects""
+personal_effects
+
+# holdout_persons = 9 45 50 52 63 95
+#subject 9:n reagoinnit..
+
+personal_effects[9,]
+
+
+#4790	lignin -> blood insulin	3.5055829938		
+#5560	lignin -> blood insulin	1.2615230525		
+#5120	lignin -> blood insulin	1.1798573236		
+#4900	lignin -> blood insulin	1.0028292724		
+#5780	lignin -> blood insulin	0.4125861690	
+
+#4680	lignin -> blood insulin	-0.9430896940		
+#2480	lignin -> blood insulin	-0.9790195630		
+#5670	lignin -> blood insulin	-1.3028765423		
+#5230	lignin -> blood insulin	-1.3556803319	
 
 ```
+
+
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
 
@@ -670,9 +704,10 @@ mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdime
 
 # get variation clusters of holdout persons
 
-sysdimet$subject_idnum <- as.numeric(substr(sysdimet$SUBJECT_ID,2,5))
-sysdimet[sysdimet$subject_idnum %in% holdout_persons,]$subject_idnum
+sysdimet$subject_num <- as.numeric(substr(sysdimet$SUBJECT_ID, 2, 4))
+sysdimet[sysdimet$subject_num %in% holdout_persons,]$effect_group
 
+holdout_persons
 # TODO: näytä esim. ligniinin henkilökohtainen vaikutus insuliiniin ja onko se klusterin mukainen
 
 # Näytä holdout-potilaan mittauksia ja miten reagointitapa ennuste sopii niihin (scatterplot?)
@@ -694,20 +729,27 @@ personal_graph9 <- mebn.personal_graph(person_id = 9,
 ```
 
 ```{r, eval=FALSE, echo=FALSE}
-
-personal_graph9
-
-write.graph(personal_graph9, "personal_graph_9.graphml", "graphml")
+library(igraph)
+#write.graph(personal_graph9, "personal_graph_9.graphml", "graphml")
 
 p9 <- read.graph("personal_graph_9.graphml", "graphml")
-p9
+ 
+e <- E(p9)[4]
+e$weight
+edge_attr(p9, "b",581)
+?get.edge.attribute
 
+E(p9)$weight
+E(p9)$mean
+
+e$b
 ```
 
 
 
-```{r personal_graphvisu1, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r personal_graphvisu1, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
+#mebn.plot_personal_effects(p9, 15)
 mebn.plot_personal_effects(personal_graph9, 15)
 ```
 
