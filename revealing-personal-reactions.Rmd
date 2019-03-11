@@ -349,7 +349,7 @@ largest_personal_effects$effect <- paste0(largest_personal_effects$predictor," -
 largest_personal_effects <- largest_personal_effects[largest_personal_effects$abs_amount > 0,]
 largest_personal_effects <- largest_personal_effects[order(-largest_personal_effects$abs_amount),]
 largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
-
+#largest_personal_effects
 
 ```
 
@@ -399,6 +399,8 @@ km <- kmeans(personal_variations_from_mean, centers = k)
 # Every patient can be assigned to some cluster based on how their reactions differ from average
 sysdimet$variation_group <- km$cluster 
 
+#effects_with_most_variance
+
 # Plot the clusters
 variations_data <- as.data.frame(t(km$centers))
 cluster_index <- seq(1:k)
@@ -446,7 +448,7 @@ This indicates that patients in clusters 2 and 4 are indeed taking cholesterol m
 The average blood insulin levels in these clusters are
 
 ```{r}
-ffor (i in seq(1,4)) print(paste0("cluster ", i, ": ", mean(sysdimet[sysdimet$effect_group == i,]$fsins)))
+for (i in seq(1,4)) print(paste0("cluster ", i, ": ", mean(sysdimet[sysdimet$effect_group == i,]$fsins)))
 ```
 
 There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking cholesterol medication. For patients in the cluster 4 the average insulin level is  the medication seems to rise the insulin level quite much, but for patients in the cluster 2 not much at all. 
@@ -461,7 +463,7 @@ fsins_index <- match("fsins", assumedtargets$Name)
 fsins_components_idx <- seq(nrow(assumedpredictors)*fsins_index,nrow(assumedpredictors)*(fsins_index+1)-1)
 
 feature_index <- c(1:nrow(assumedpredictors))
-cluster_index <- c,,4))
+cluster_index <- c(2,4)
 
 fsins_clusters <- variations_data[fsins_components_idx,cluster_index]
 
@@ -470,6 +472,7 @@ mebn.plot_clusters(fsins_clusters, cluster_index, assumedpredictors, assumedtarg
 ```
 So, based on this we have an evidence that there is group on patients in this dataset who has significantly larger blood insulin values on average and a major component affecting the raise is cholesterol medication.
 
+#clusters of nutritional effects
 
 Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
 
@@ -542,7 +545,7 @@ plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
 gridExtra::grid.arrange(plot1,plot2,nrow=1)
 ```
 
-```{r variation clusters3, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters3, echo=FALSE, eval=TRUE, fig.width=8, fig.height=8}
 source("mebn/MEBN.r")
 # Number of cluster centers 
 k <- 4
@@ -560,7 +563,7 @@ cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
-```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=8, fig.height80}
+```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=8, fig.height=8}
 
 # Number of cluster centers 
 k <- 4
@@ -595,7 +598,7 @@ table(sysdimet$effect_group)
 
 For testing, we sample a holdout set of patients overall the dataset. We then train a model without this holdout set and test how accurately we can place the predicted reaction types in previously found clusters. Note that we don't know the true reaction types for these patients. This makes absolute testing of prediction performance impossible, but in this way we can see at least if the prediction is consistent with analysis of the whole dataset. We know the previous cluster assiments of these holdout patients.
 
-```{r holdout_data, echo=FALSE, eval=TRUE, message=FALSE}
+```{r kfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
 library(loo)
 
 set.seed(fixed_seed)
@@ -618,37 +621,27 @@ holdout_persons <- which(holdout_persons %in% 1) # index of subjects
 holdout_persons
 ```
 
-```{r mebn_personal_effects}
-lignin_fsins <- largest_personal_effects[largest_personal_effects$effect=="lignin -> blood insulin",]
-lignin_fsins[order(-lignin_fsins$amount),]
+```{r personal_effects_holdout, echo=FALSE, eval=FALSE, message=FALSE}
+# Find persons with most different lignin->fsins effect
+p <- nrow(assumedpredictors)
+ins_idx <- match("fsins", assumedtargets$Name)
+lignin_idx <- match("ligniini", assumedpredictors$Name)
 
-# TODO: Etsi potilaat, jotka reagoivat näin eri tavoin ja piirrä heidän verkkonsa sekä tämän reagoinnin posterior
+ligning_fsins_idx <- p*(ins_idx-1) + lignin_idx
 
-# personal_effects-data framessa jokainen rivi vastaa subject_id:ta
-# nyt siitä pitäisi hakea ääriarvot kuten "largest_personal_effects""
-personal_effects
+# ligning -> fsins for every patient
+ligning_fsins <- as.data.frame(cbind(personal_effects[, ligning_fsins_idx], seq(1, nrow(personal_effects))))
+colnames(ligning_fsins) <- c("effect", "subject_id")
 
-# holdout_persons = 9 45 50 52 63 95
-#subject 9:n reagoinnit..
+holdout_persons <- c(head(ligning_fsins[order(-ligning_fsins$effect),],3)$subject_id, tail(ligning_fsins[order(-ligning_fsins$effect),],3)$subject_id)
+holdout_index <- sysdimet$SUBJECT_ID %in% sprintf("S%02d", holdout_persons)
 
-personal_effects[9,]
-# TODO: Etsi reagoinnin "lignin -> blood insulin" arvo ja hae top 6 absoluuttisen reagoinnin (+ ja -) perusteella holdoutiin
+holdout_index[holdout_index == TRUE] <- 1
+holdout_index[holdout_index == FALSE] <- 0
 
-
-#4790	lignin -> blood insulin	3.5055829938		
-#5560	lignin -> blood insulin	1.2615230525		
-#5120	lignin -> blood insulin	1.1798573236		
-#4900	lignin -> blood insulin	1.0028292724		
-#5780	lignin -> blood insulin	0.4125861690	
-
-#4680	lignin -> blood insulin	-0.9430896940		
-#2480	lignin -> blood insulin	-0.9790195630		
-#5670	lignin -> blood insulin	-1.3028765423		
-#5230	lignin -> blood insulin	-1.3556803319	
-
+# ligning_fsins$effect_group <- sysdimet$effect_group[seq(1,nrow(sysdimet),4)]
+#ligning_fsins[order(ligning_fsins$effect),]
 ```
-
-
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
 
@@ -669,7 +662,6 @@ Next we fit the previous model with the Finnish horseshoe added. Besides the shr
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
-
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -688,77 +680,63 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
-```{r}
-
-# get variation clusters of holdout persons
-
-sysdimet$subject_num <- as.numeric(substr(sysdimet$SUBJECT_ID, 2, 4))
-sysdimet[sysdimet$subject_num %in% holdout_persons,]$effect_group
-
-holdout_persons
-# TODO: näytä esim. ligniinin henkilökohtainen vaikutus insuliiniin ja onko se klusterin mukainen
-
-# Näytä holdout-potilaan mittauksia ja miten reagointitapa ennuste sopii niihin (scatterplot?)
-
-```
-
-```{r personal_graph1}
+```{r personal_graph1, echo=FALSE, eval=TRUE}
 source("mebn/MEBN.r")
 
-# This is a predicted personal reaction graph of patient in certain cluster
+person_id1 <- head(holdout_persons,1)
 
-# This method adds (or should add) values of b and personal nodes to a typical graph
-
-personal_graph9 <- mebn.personal_graph(person_id = 9, 
+personal_graph1 <- mebn.personal_graph(person_id = person_id1, 
                                        reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
                                        local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
+
+write.graph(personal_graph1, "personal_graph1.graphml", "graphml")
 ```
 
-```{r, eval=FALSE, echo=FALSE}
-library(igraph)
-#write.graph(personal_graph9, "personal_graph_9.graphml", "graphml")
-
-p9 <- read.graph("personal_graph_9.graphml", "graphml")
- 
-e <- E(p9)[4]
-e$weight
-edge_attr(p9, "b",581)
-?get.edge.attribute
-
-E(p9)$weight
-E(p9)$mean
-
-e$b
-```
-
-
-
-```{r personal_graphvisu1, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r personal_graph2, echo=FALSE, eval=TRUE}
 source("mebn/MEBN.r")
-#mebn.plot_personal_effects(p9, 15)
-mebn.plot_personal_effects(personal_graph9, 15)
+
+person_id2 <- tail(holdout_persons,1)
+
+personal_graph2 <- mebn.personal_graph(person_id = person_id2, 
+                                       reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
+                                       predictor_columns = assumedpredictors, 
+                                       assumed_targets = assumedtargets, 
+                                       local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
+
+write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 ```
 
 
-Compare lignin to insulin effect of two patients who were previously found to be in different clusters
+```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+source("mebn/MEBN.r")
+personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
+mebn.plot_personal_effects(personal_graph2, 15)
+```
 
 ```{r, echo=FALSE, eval=TRUE, cache=TRUE}
 source("mebn/MEBN.r")
 
-subject_id <- 9
 lignin_id <- match("ligniini", datadesc$Name)
 
-fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
+fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
 posterior <- as.array(fsins_blmm)
 
-lignin_plot <- mcmc_areas(posterior, pars = paste0("personal_effect[",subject_id,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ylab("probability") + ggtitle("lignin") +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
-bayesplot_grid(plots = list(lignin_plot), legends = FALSE)
+lignin_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+bayesplot_grid(plots = list(lignin_plot1, lignin_plot2), legends = FALSE)
 
 ```
+
+```{r}
+unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id1),]$effect_group)
+unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id2),]$effect_group)
+```
+
+
 
 ```{r, eval=FALSE, echo=FALSE}
 

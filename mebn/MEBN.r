@@ -7,6 +7,19 @@
 
 ##################################################
 
+mebn.markov_blanket <- function(g, target)
+{
+  from.parents.e <- E(g)[to(target)]
+  to.children.e <- E(g)[from(target)]
+  children.v <- V(g)[get.edges(g, to.children.e)[, 2]]
+  total.e <- c(from.parents.e, to.children.e, from.spouses.to.children.e)
+  delete.e <- E(g)[setdiff(E(g), total.e)]
+  g.simple <- delete.edges(g, delete.e)
+  g.simple
+}
+
+##################################################
+
 mebn.new_graph_with_randomvariables <- function(datadesc)
 {
   library(igraph)  
@@ -563,8 +576,8 @@ mebn.target_dens_overlays <- function(localfit_directory, target_variables, data
   
   # TODO: Check if dir exists (localfit_directory)
   
-  theme_set(bayesplot::theme_default())
-  bayesplot::color_scheme_set("purple")
+  color_scheme_set("blue")
+  bayesplot_theme_set(theme_default())
   
   dens_plots <- list()
   i <- 1
@@ -971,7 +984,7 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
   # Color and size encoding for edges according to beta + b coefficients
-  E(visual_graph)$width = abs(E(visual_graph)$weight) * 7
+  E(visual_graph)$width = abs(E(visual_graph)$mean) * 7
   
   
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
