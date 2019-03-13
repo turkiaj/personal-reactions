@@ -576,7 +576,7 @@ mebn.target_dens_overlays <- function(localfit_directory, target_variables, data
   
   # TODO: Check if dir exists (localfit_directory)
   
-  color_scheme_set("blue")
+  color_scheme_set("purple")
   bayesplot_theme_set(theme_default())
   
   dens_plots <- list()
@@ -853,11 +853,16 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
       predictor_name <- predictor_names[p]
       
       # Attach the random variable
+      # Data values are also stored in edge attributes for easier visualization
       reaction_graph <- reaction_graph + edge(c(predictor_name, target_name),
                                               weight = pe$personal_effect[p], 
-                                              b = pe$b[p],
-                                              mean = pe$personal_effect[p])
-      
+                                              value = pe$personal_effect[p], 
+                                              value_lCI = pe$personal_effect_lCI[p],
+                                              value_uCI = pe$personal_effect_uCI[p],
+                                              b = pe$b[p], 
+                                              b_lCI = pe$b_lCI[p],
+                                              b_uCI = pe$b_uCI[p])
+
       # Personal effect (beta + b)
       reaction_graph <- reaction_graph + vertex(paste0("personal_", predictor_name, "_", target_name), 
                                                 label=paste0("personal_", predictor_name), 
@@ -875,7 +880,7 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
                                                 type="b", color="#AAAAAA", 
                                                 value = pe$b[p], 
                                                 value_lCI = pe$b_lCI[p],
-                                                value_uCI = pe$b_lCI[p],
+                                                value_uCI = pe$b_uCI[p],
                                                 shape = "circle")
       
       reaction_graph <- reaction_graph + edge(paste0("b_", predictor_name, "_", target_name), target_name, shape = "arrow", weight = 1, type = "b") 
@@ -974,9 +979,11 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   # Graph layout
   V(visual_graph)$size = 5
   # - put all blood test values in own rank
+  # "the positions within the rows are optimized to minimize edge crossings, using the Sugiyama algorithm"
+  # TODO: create a custom ordering of nodes to keep the order same 
   bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
   # - flip layout sideways, from left to right
-  gap <- 4
+  gap <- 6
   bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
   
   # Align vertex labels according to graph level
@@ -984,11 +991,9 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
   # Color and size encoding for edges according to beta + b coefficients
-  E(visual_graph)$width = abs(E(visual_graph)$mean) * 7
-  
-  
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
   E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
   
   plot(visual_graph, 
        layout=bipa_layout, 
@@ -998,7 +1003,8 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
        vertex.label.cex=1,
        vertex.label.dist=4,
        edge.arrow.size=0.5,
-       edge.arrow.width=1)
+       edge.arrow.width=1,
+       curved = 0)
 }
 
 ##################################################
