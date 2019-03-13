@@ -239,6 +239,7 @@ We have now reached a reasonable good fit for the local distributions of the Bay
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
 ```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
 mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
 ```
 
@@ -386,7 +387,7 @@ gridExtra::grid.arrange(plot1,plot2,nrow=1)
 
 By looking previous diagram we see that there are four clearly identifiable groups between patients. At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
 
-```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=10}
+```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=9}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -411,7 +412,7 @@ Cholesterol medication seems to dominate the clusters. There are patients for wh
 
 Let's see how the clustering shows with absolute effects rather than difference from mean. Note that these are not the greatest effects, but those with most personal variance.
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=8, fig.height=10, cache=TRUE}
+```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=8, fig.height=9, cache=TRUE}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -633,7 +634,8 @@ ligning_fsins_idx <- p*(ins_idx-1) + lignin_idx
 ligning_fsins <- as.data.frame(cbind(personal_effects[, ligning_fsins_idx], seq(1, nrow(personal_effects))))
 colnames(ligning_fsins) <- c("effect", "subject_id")
 
-holdout_persons <- c(head(ligning_fsins[order(-ligning_fsins$effect),],3)$subject_id, tail(ligning_fsins[order(-ligning_fsins$effect),],3)$subject_id)
+# Pick most and least reacting patients
+holdout_persons <- c(head(ligning_fsins[order(-ligning_fsins$effect),],1)$subject_id, tail(ligning_fsins[order(-ligning_fsins$effect),],1)$subject_id)
 holdout_index <- sysdimet$SUBJECT_ID %in% sprintf("S%02d", holdout_persons)
 
 holdout_index[holdout_index == TRUE] <- 1
@@ -662,7 +664,7 @@ Next we fit the previous model with the Finnish horseshoe added. Besides the shr
 
 ```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
-initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
                                    targetdata = holdout_index,
@@ -674,19 +676,31 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_effpred.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
+
+write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
+```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+#sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
+# Typical effects of shrinkaged graph
+mebn.plot_typical_effects(sysdimet_gamma_ar1_rhs_pred, 30)
+```
+
+
 ```{r personal_graph1, echo=FALSE, eval=TRUE}
 source("mebn/MEBN.r")
 
 person_id1 <- head(holdout_persons,1)
 
+# TODO: Begin with a fully connected graph, update it with a typical information and here update the personal info
+
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 personal_graph1 <- mebn.personal_graph(person_id = person_id1, 
-                                       reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
+                                       reaction_graph = initial_graph, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
                                        local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
@@ -699,8 +713,9 @@ source("mebn/MEBN.r")
 
 person_id2 <- tail(holdout_persons,1)
 
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 personal_graph2 <- mebn.personal_graph(person_id = person_id2, 
-                                       reaction_graph = sysdimet_gamma_ar1_rhs_pred, 
+                                       reaction_graph = initial_graph, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
                                        local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
@@ -708,6 +723,12 @@ personal_graph2 <- mebn.personal_graph(person_id = person_id2,
 write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 ```
 
+
+```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+source("mebn/MEBN.r")
+personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
+mebn.plot_personal_effects(personal_graph1, 30)
+```
 
 ```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
@@ -717,10 +738,13 @@ mebn.plot_personal_effects(personal_graph2, 15)
 
 ```{r, echo=FALSE, eval=TRUE, cache=TRUE}
 source("mebn/MEBN.r")
+library(bayesplot)
+color_scheme_set("purple")
 
+#datadesc$Name
 lignin_id <- match("ligniini", datadesc$Name)
 
-fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fshdl")
+fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
 posterior <- as.array(fsins_blmm)
 
 lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
