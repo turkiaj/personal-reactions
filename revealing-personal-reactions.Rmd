@@ -456,7 +456,7 @@ There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking ch
 
 Let's try to confirm this finding by visualizing the components of insulin variance.
 
-```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=8, fig.height50, cache=TRUE}
+```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=8, fig.height=5, cache=TRUE}
 source("mebn/MEBN.r")
 
 # get indexes of personal effects for fsins in variations_data vector
@@ -622,7 +622,7 @@ holdout_persons <- which(holdout_persons %in% 1) # index of subjects
 holdout_persons
 ```
 
-```{r personal_effects_holdout, echo=FALSE, eval=FALSE, message=FALSE}
+```{r personal_effects_holdout, echo=FALSE, eval=TRUE, message=FALSE}
 # Find persons with most different lignin->fsins effect
 p <- nrow(assumedpredictors)
 ins_idx <- match("fsins", assumedtargets$Name)
@@ -684,13 +684,6 @@ write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", 
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
-```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
-#sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
-# Typical effects of shrinkaged graph
-mebn.plot_typical_effects(sysdimet_gamma_ar1_rhs_pred, 30)
-```
-
-
 ```{r personal_graph1, echo=FALSE, eval=TRUE}
 source("mebn/MEBN.r")
 
@@ -744,23 +737,23 @@ color_scheme_set("purple")
 #datadesc$Name
 lignin_id <- match("ligniini", datadesc$Name)
 
+#lignin_id <- match("kolestrolilaakitys", datadesc$Name)
+
 fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
 posterior <- as.array(fsins_blmm)
 
-lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("kolestrolilaakitys -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
-lignin_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+lignin_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("kolestrolilaakitys -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 bayesplot_grid(plots = list(lignin_plot1, lignin_plot2), legends = FALSE)
 
 ```
 
-```{r}
+```{r, eval=FALSE, echo=FALSE}
 unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id1),]$effect_group)
 unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id2),]$effect_group)
 ```
-
-
 
 ```{r, eval=FALSE, echo=FALSE}
 
