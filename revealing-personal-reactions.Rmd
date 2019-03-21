@@ -12,6 +12,8 @@ abstract: This notebook shows in detail how mixed-effect Bayesian network can be
 
 ```{r setup, include=FALSE}
 library(knitr)
+library(kableExtra) # for good looking tables
+
 knitr::opts_chunk$set(echo = TRUE, fig.align="center")
 
 # this allows using tikz rendering for plots with "dev=tikz"
@@ -32,7 +34,9 @@ In this work we propose a Bayesian network as an appealling way to model and pre
 
 In this article we use this method to analyze a dataset from the Sysdimet study [@pmid21901116] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated. As we are interested in the personal variations of these nutritional effects we use a mixed-effect parametrization of Bayesian network [@Bae2016]. This allows us to estimate both typical and personal magnitudes of the nutritional effects with a same model.  
 
-**Formal definition of the problem.** Let us denote the graph of interconnected nutrients and responses with $G$. We can then formulate the modeling problem as finding the graph $G$ that is the most probable given the data $D$
+#Formal definition of the problem
+
+Let us denote the graph of interconnected nutrients and responses with $G$. We can then formulate the modeling problem as finding the graph $G$ that is the most probable given the data $D$
 
 \begin{align}
 {P}({G}|{D})
@@ -49,7 +53,9 @@ This turns the problem to finding a graph that is most probable given data. To e
 
 The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
 
-**Hierarchical estimation of the local distributions**. We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
+**Hierarchical estimation of the local distributions**
+
+We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
 
 Concretely, we can use generalized linear mixed-effect models to describe the local probability distributions of the Bayesian network. We assume that every  random variable at the network can be explaned with a probability distribution from an exponential family of distributions with linear link function with input from its parent nodes. We furthermore assume that the effect between variables can be factorized into typical and personal parts. Here typical part of the effect is denoted with coefficient $\beta$ and personal part as $b$
 
@@ -130,7 +136,7 @@ normal_targets$ScaleMax <- 25
 mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 ```
 
-**Developing the model**
+**Developing the model beyond the normal distribution**
 
 More realistic probability distribution for blood test values would be Log-Normal or Gamma distributions [@10.1371/journal.pone.0021403]. They both allow only positive values and model better the right tail of individual larger values. For further development, we choose Gamma distribution with identity link function. This is important as it keeps the regression coefficients of the nutrients on the same absolute scale than with Normal models. The regression coefficients are used as weights of the edges at the Bayesian network and they all should be on the same scale regardless of the random variables' distribution. 
 
@@ -162,7 +168,7 @@ beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
 head(beta_coefs)
 ```
 
-**Comparing different local models with LOO**
+**Approximation of the graph probability with LOO**
 
 Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models. We can approximate the probability of the whole graph by summing over the expected log predictive densities (ELPD) of every distict local distribution at the graph.
 
@@ -176,7 +182,8 @@ normal_vs_gamma
 
 As ELPD of the gamma model is higher, we should choose that for further development.
 
-##Varying response time: AR-structures##
+
+**Modeling the varying response time with an autocorrelation structure**
 
 In the dataset the observations from patients' food diaries and blood tests have one week response time. This might not be optimal time for all the responses and the successive observations might be correlated. For modeling the correlated residuals, we add an autocorrelation structure to the model. As there are only four observations from each patient, we consider only one previous residual for each observation.
 
@@ -232,18 +239,21 @@ ar1_comparison
    
 ```
 
-#Typical effects of nutrition
+
+#Typical effects of nutrition, and variance from the typical effects
 
 We have now reached a reasonable good fit for the local distributions of the Bayesian network. Our code has extracted a graphical model from these  posterior distributions of random variables and parameters. The graph consists mean values of the posteriors and also their credible intervals. This is a lighter data structure for further analysis and allows also graph operations besides the regression modeling. 
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
 ```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+source("mebn/MEBN.r")
+require(igraph)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
-mebn.plot_typical_effects(sysdimet_gamma_ar1, 15)
+graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
 ```
 
-#Personal effects
+**The effects with most personal variance**
 
 Beside the typical effects, our main interest lies on the personal effects $b$ and their variances $\sigma_b$. If there is a large variance for the personal effect it means that there exists personal differences in reaction types. These differences are our main interest to find.
 
@@ -282,7 +292,7 @@ number_of_varying_effects <- nrow(effects_with_most_variance)
 mebn.plot_personal_variations(sysdimet_gamma_ar1, number_of_varying_effects)
 ```
 
-##Clusters of personal graphs
+#Finding the clusters of personal reaction types
 
 Although there are personal differences, it is likely that everyone is not behaving uniquely but there might exist similar groups of behavior. We can analyze personal differences in two ways. We can look the absolute magnitudes of effects and we can also look how persons differ from typical behavior or mean of the effect.
 
@@ -354,9 +364,7 @@ largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
 
 ```
 
-## Latent grouping
-
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, fig.height=6}
 library(stats)
 library(gridExtra)
 
@@ -385,7 +393,11 @@ plot2 <- ggplot(data=df_vars, aes(x=x, y=y, group=1)) +
 gridExtra::grid.arrange(plot1,plot2,nrow=1)
 ```
 
-By looking previous diagram we see that there are four clearly identifiable groups between patients. At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
+By looking previous diagram we see that there are four clearly identifiable groups between patients. 
+
+**The effect of cholesterol medication**
+
+At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
 
 ```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=9}
 source("mebn/MEBN.r")
@@ -473,7 +485,7 @@ mebn.plot_clusters(fsins_clusters, cluster_index, assumedpredictors, assumedtarg
 ```
 So, based on this we have an evidence that there is group on patients in this dataset who has significantly larger blood insulin values on average and a major component affecting the raise is cholesterol medication.
 
-#clusters of nutritional effects
+**Clustering with nutritional effects only**
 
 Both gender and cholesterol medication are unchanging factors at the dataset. Let us next remove those from clustering features and see how the clusters form based on nutritional effects only.
 
@@ -517,7 +529,7 @@ for (i in c(1:nrow(assumedtargets)))
 
 Number of clusters with nutritional effects only
 
-```{r, echo=FALSE, eval=FALSE}
+```{r, echo=FALSE, eval=FALSE, fig.height=6}
 library(stats)
 library(gridExtra)
 
@@ -589,7 +601,7 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 
 In clusters 1 and 2 there are patients whose blood insulin levels react on lower and on higher than average. One interesting difference is lignin's effect to the blood insulin.
 
-### Predicting personal reaction type
+#Predicting the personal reaction type for new patients
 
 Finally, we can pick one the previously found reaction type clusters and hold aside the data for few of these patients. The goal would be then to use our model to predict the blood test values for this test group by their diet. This also reveals their personal reaction type for nutrition. We can compare this prediction to the true blood test values at dataset and also to the previous estimates from the whole sample population.
 
@@ -684,7 +696,8 @@ write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", 
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
-```{r personal_graph1, echo=FALSE, eval=TRUE}
+```{r personal_graph1, echo=FALSE, eval=FALSE}
+# set eval=FALSE if you need to need to upd
 source("mebn/MEBN.r")
 
 person_id1 <- head(holdout_persons,1)
@@ -701,7 +714,7 @@ personal_graph1 <- mebn.personal_graph(person_id = person_id1,
 write.graph(personal_graph1, "personal_graph1.graphml", "graphml")
 ```
 
-```{r personal_graph2, echo=FALSE, eval=TRUE}
+```{r personal_graph2, echo=FALSE, eval=FALSE}
 source("mebn/MEBN.r")
 
 person_id2 <- tail(holdout_persons,1)
@@ -719,14 +732,15 @@ write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 
 ```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
+require(igraph)
 personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
-mebn.plot_personal_effects(personal_graph1, 30)
+mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 ```
 
 ```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
-mebn.plot_personal_effects(personal_graph2, 15)
+mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
 ```
 
 ```{r, echo=FALSE, eval=TRUE, cache=TRUE}
