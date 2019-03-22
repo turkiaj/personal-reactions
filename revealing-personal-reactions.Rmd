@@ -176,9 +176,15 @@ This shows how the local distributions with Normal and Gamma distribution compar
 
 ```{r, normal_gamma_loo, message=FALSE, warning=FALSE, cache=TRUE}
 normal_vs_gamma <- mebn.LOO_comparison(assumedtargets, "BLMM_normal", "BLMM_gamma/hierarchical_idlink")
-normal_vs_gamma
+
 # https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
+
+```{r, plot_normal_gamma_loo, echo=FALSE, fig.height=5}
+kable(normal_vs_gamma) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
+```
+
 
 As ELPD of the gamma model is higher, we should choose that for further development.
 
@@ -226,17 +232,23 @@ mebn.target_dens_overlays("BLMM_gamma/ar1/", assumedtargets, sysdimet)
 
 Numerically the difference is also significant between models with AR(0) and AR(1)
 
-```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE}
+```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
 ar0_vs_ar1 <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/hierarchical_idlink", "BLMM_gamma/ar1")
-ar0_vs_ar1
+
+```
+```{r ar0_ar1_table, message=FALSE, warning=FALSE, cache=TRUE}}
+kable(ar0_vs_ar1) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
 ```
 
 It is interesting also to compare the AR(1) coefficients of different local distributions at the graph. For HDL cholesterol (fshdl), combined cholesterol (fskol) and the blood glucose (fpgluk) the positive AR(1) coefficient indicates that the effect of nutrition spans longer than one week 
 
 ```{r ar1_comparison, message=FALSE, warning=FALSE, cache=TRUE}
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
-ar1_comparison
-   
+```
+```{r ar1_comparison_table, message=FALSE, warning=FALSE, cache=TRUE, fig.height=5}
+kable(ar1_comparison) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
 ```
 
 
@@ -279,8 +291,11 @@ personal_variances$"CI-10%" <- b_sigma$value_lCI
 personal_variances$"CI-90%" <- b_sigma$value_uCI
 
 ordered_personal_variance <- personal_variances[order(-personal_variances$variance),]
+```
 
-head(ordered_personal_variance, 20)
+```{r personal_variance_comparison_table, message=FALSE, warning=FALSE, cache=TRUE}}
+kable(head(ordered_personal_variance, 20)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
 ```
 
 These are the effect with most difference between patients. Let us the examine closer those of the effects that have most probable variance over 0.30 and plot them as a graph
@@ -453,7 +468,12 @@ By looking at the absolute effect of the cholesterol medication it seems that th
 
 ```{r cholmed_crosstab, fig.width=8, fig.height=1}
 
-table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
+tb <- table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
+rownames(tb) <- c("No medication", "Chol. med.")
+
+kable(tb) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>%
+  column_spec(1, width = "10em")
 
 ```
 This indicates that patients in clusters 2 and 4 are indeed taking cholesterol medication.
@@ -461,7 +481,25 @@ This indicates that patients in clusters 2 and 4 are indeed taking cholesterol m
 The average blood insulin levels in these clusters are
 
 ```{r}
-for (i in seq(1,4)) print(paste0("cluster ", i, ": ", mean(sysdimet[sysdimet$effect_group == i,]$fsins)))
+cluster <- seq(1,4) 
+fsins_avg <- c()
+
+for (i in clusters) {
+  fsins_avg <- c(fsins_avg, mean(sysdimet[sysdimet$effect_group == i,]$fsins))
+}  
+
+df <- cbind(clusters, fsins_avg)
+colnames(df) <- c("cluster", "average blood insulin")
+
+kable(df) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>%
+  column_spec(1, width = "10em")
+
+```
+
+```{r ar1_comparison_table, message=FALSE, warning=FALSE, cache=TRUE, fig.height=5}
+kable(ar1_comparison) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
 ```
 
 There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking cholesterol medication. For patients in the cluster 4 the average insulin level is  the medication seems to rise the insulin level quite much, but for patients in the cluster 2 not much at all. 
@@ -605,10 +643,6 @@ In clusters 1 and 2 there are patients whose blood insulin levels react on lower
 
 Finally, we can pick one the previously found reaction type clusters and hold aside the data for few of these patients. The goal would be then to use our model to predict the blood test values for this test group by their diet. This also reveals their personal reaction type for nutrition. We can compare this prediction to the true blood test values at dataset and also to the previous estimates from the whole sample population.
 
-```{r}
-table(sysdimet$effect_group)
-```
-
 For testing, we sample a holdout set of patients overall the dataset. We then train a model without this holdout set and test how accurately we can place the predicted reaction types in previously found clusters. Note that we don't know the true reaction types for these patients. This makes absolute testing of prediction performance impossible, but in this way we can see at least if the prediction is consistent with analysis of the whole dataset. We know the previous cluster assiments of these holdout patients.
 
 ```{r kfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
@@ -674,7 +708,7 @@ shrinkage_parameters <- within(list(),
 
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
-```{r, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
@@ -696,11 +730,16 @@ write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", 
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
+
+```{r define_holdout_persons, echo=FALSE}
+person_id1 <- head(holdout_persons,1)
+person_id2 <- tail(holdout_persons,1)
+
+```
+
 ```{r personal_graph1, echo=FALSE, eval=FALSE}
 # set eval=FALSE if you need to need to upd
 source("mebn/MEBN.r")
-
-person_id1 <- head(holdout_persons,1)
 
 # TODO: Begin with a fully connected graph, update it with a typical information and here update the personal info
 
@@ -717,8 +756,6 @@ write.graph(personal_graph1, "personal_graph1.graphml", "graphml")
 ```{r personal_graph2, echo=FALSE, eval=FALSE}
 source("mebn/MEBN.r")
 
-person_id2 <- tail(holdout_persons,1)
-
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 personal_graph2 <- mebn.personal_graph(person_id = person_id2, 
                                        reaction_graph = initial_graph, 
@@ -734,13 +771,13 @@ write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
-mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
+layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 ```
 
 ```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
-mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
+layout <- mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
 ```
 
 ```{r, echo=FALSE, eval=TRUE, cache=TRUE}
