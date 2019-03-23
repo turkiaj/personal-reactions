@@ -34,7 +34,7 @@ In this work we propose a Bayesian network as an appealling way to model and pre
 
 In this article we use this method to analyze a dataset from the Sysdimet study [@pmid21901116] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated. As we are interested in the personal variations of these nutritional effects we use a mixed-effect parametrization of Bayesian network [@Bae2016]. This allows us to estimate both typical and personal magnitudes of the nutritional effects with a same model.  
 
-#Formal definition of the problem
+#Formal definition of the nutritional effects model
 
 Let us denote the graph of interconnected nutrients and responses with $G$. We can then formulate the modeling problem as finding the graph $G$ that is the most probable given the data $D$
 
@@ -66,7 +66,7 @@ Concretely, we can use generalized linear mixed-effect models to describe the lo
 \end{split}
 \end{align}
 
-Note that while this formulation generalizes to graphs with multiple levels, we have a prior assumption ({P}({G})) that the structure of our dataset is a bipartite graph. 
+Note that while this formulation generalizes to graphs with multiple levels, we have a prior assumption, $P(G)$, that the structure of our dataset is a bipartite graph. 
 
 ```{r data_loading, echo=FALSE, message=FALSE}
 
@@ -136,6 +136,7 @@ normal_targets$ScaleMax <- 25
 mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 ```
 
+
 **Developing the model beyond the normal distribution**
 
 More realistic probability distribution for blood test values would be Log-Normal or Gamma distributions [@10.1371/journal.pone.0021403]. They both allow only positive values and model better the right tail of individual larger values. For further development, we choose Gamma distribution with identity link function. This is important as it keeps the regression coefficients of the nutrients on the same absolute scale than with Normal models. The regression coefficients are used as weights of the edges at the Bayesian network and they all should be on the same scale regardless of the random variables' distribution. 
@@ -161,28 +162,27 @@ The visual comparison of the true and estimated distributions of blood test vari
 mebn.target_dens_overlays("BLMM_gamma/hierarchical_idlink/", assumedtargets, sysdimet)
 ```
 
-```{r effect_comparison, eval=FALSE}
+```{r effect_comparison, eval=FALSE, echo=FALSE}
 #As we see here, the regression coefficients are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
 
 beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
 head(beta_coefs)
 ```
 
-**Approximation of the graph probability with LOO**
+**Graph probability approximation with LOO**
 
 Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models. We can approximate the probability of the whole graph by summing over the expected log predictive densities (ELPD) of every distict local distribution at the graph.
 
 This shows how the local distributions with Normal and Gamma distribution compare to each other
 
-```{r, normal_gamma_loo, message=FALSE, warning=FALSE, cache=TRUE}
+```{r, normal_gamma_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=TRUE}
 normal_vs_gamma <- mebn.LOO_comparison(assumedtargets, "BLMM_normal", "BLMM_gamma/hierarchical_idlink")
-
-# https://haozhu233.github.io/kableExtra/awesome_table_in_html.html
 ```
 
 ```{r, plot_normal_gamma_loo, echo=FALSE, fig.height=5}
 kable(normal_vs_gamma) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
 ```
 
 
@@ -232,13 +232,14 @@ mebn.target_dens_overlays("BLMM_gamma/ar1/", assumedtargets, sysdimet)
 
 Numerically the difference is also significant between models with AR(0) and AR(1)
 
-```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
+```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=TRUE}
 ar0_vs_ar1 <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/hierarchical_idlink", "BLMM_gamma/ar1")
 
 ```
-```{r ar0_ar1_table, message=FALSE, warning=FALSE, cache=TRUE}}
+```{r ar0_ar1_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
 kable(ar0_vs_ar1) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
 ```
 
 It is interesting also to compare the AR(1) coefficients of different local distributions at the graph. For HDL cholesterol (fshdl), combined cholesterol (fskol) and the blood glucose (fpgluk) the positive AR(1) coefficient indicates that the effect of nutrition spans longer than one week 
@@ -246,9 +247,10 @@ It is interesting also to compare the AR(1) coefficients of different local dist
 ```{r ar1_comparison, message=FALSE, warning=FALSE, cache=TRUE}
 ar1_comparison <- mebn.AR_comparison(assumedtargets, "BLMM_gamma/ar1")
 ```
-```{r ar1_comparison_table, message=FALSE, warning=FALSE, cache=TRUE, fig.height=5}
+```{r ar1_comparison_table, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE, fig.height=5}
 kable(ar1_comparison) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
 ```
 
 
@@ -258,7 +260,7 @@ We have now reached a reasonable good fit for the local distributions of the Bay
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
-```{r, typical_effects_figure, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r, typical_effects_figure, fig.height = 8, fig.width = 10, echo=FALSE, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 require(igraph)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
@@ -293,9 +295,10 @@ personal_variances$"CI-90%" <- b_sigma$value_uCI
 ordered_personal_variance <- personal_variances[order(-personal_variances$variance),]
 ```
 
-```{r personal_variance_comparison_table, message=FALSE, warning=FALSE, cache=TRUE}}
+```{r personal_variance_comparison_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
 kable(head(ordered_personal_variance, 20)) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE) %>%
+  row_spec(0,bold=TRUE)  
 ```
 
 These are the effect with most difference between patients. Let us the examine closer those of the effects that have most probable variance over 0.30 and plot them as a graph
@@ -379,7 +382,7 @@ largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
 
 ```
 
-```{r, echo=FALSE, eval=TRUE, fig.height=6}
+```{r, echo=FALSE, eval=TRUE, fig.height=3}
 library(stats)
 library(gridExtra)
 
@@ -466,22 +469,22 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 
 By looking at the absolute effect of the cholesterol medication it seems that there separetes two groups where one it is a significant factor in explaining blood insulin level, and other group where it does not play virtually any role. But does these patients even take cholesterol medications? Let's create a cross tabulation of observations to explore this effect more closely.
 
-```{r cholmed_crosstab, fig.width=8, fig.height=1}
+```{r cholmed_crosstab, echo=FALSE}
 
 tb <- table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
 rownames(tb) <- c("No medication", "Chol. med.")
 
 kable(tb) %>%
   kable_styling(bootstrap_options = c("striped", "condensed")) %>%
-  column_spec(1, width = "10em")
-
+  column_spec(1, width = "10em") %>%
+  row_spec(0,bold=TRUE) 
 ```
 This indicates that patients in clusters 2 and 4 are indeed taking cholesterol medication.
 
 The average blood insulin levels in these clusters are
 
-```{r}
-cluster <- seq(1,4) 
+```{r, echo=FALSE}
+clusters <- seq(1,4) 
 fsins_avg <- c()
 
 for (i in clusters) {
@@ -493,13 +496,9 @@ colnames(df) <- c("cluster", "average blood insulin")
 
 kable(df) %>%
   kable_styling(bootstrap_options = c("striped", "condensed")) %>%
-  column_spec(1, width = "10em")
+  column_spec(1, width = "10em") %>%
+  row_spec(0,bold=TRUE)   
 
-```
-
-```{r ar1_comparison_table, message=FALSE, warning=FALSE, cache=TRUE, fig.height=5}
-kable(ar1_comparison) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE)
 ```
 
 There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking cholesterol medication. For patients in the cluster 4 the average insulin level is  the medication seems to rise the insulin level quite much, but for patients in the cluster 2 not much at all. 
@@ -709,7 +708,6 @@ shrinkage_parameters <- within(list(),
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
-source("mebn/MEBN.r")
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -726,7 +724,7 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
 write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", "graphml")
 ```
 
-```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
 mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
@@ -767,37 +765,53 @@ write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 ```
 
 
-```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
 layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 ```
 
-```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
+require(igraph)
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
 layout <- mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
 ```
 
-```{r, echo=FALSE, eval=TRUE, cache=TRUE}
+```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=6}
 source("mebn/MEBN.r")
 library(bayesplot)
 color_scheme_set("purple")
 
-#datadesc$Name
 lignin_id <- match("ligniini", datadesc$Name)
-
-#lignin_id <- match("kolestrolilaakitys", datadesc$Name)
 
 fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
 posterior <- as.array(fsins_blmm)
 
-lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("kolestrolilaakitys -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+lignin_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
-lignin_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("kolestrolilaakitys -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+lignin_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",lignin_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("lignin -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 bayesplot_grid(plots = list(lignin_plot1, lignin_plot2), legends = FALSE)
+
+```
+
+```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=6}
+source("mebn/MEBN.r")
+library(bayesplot)
+color_scheme_set("purple")
+
+cholmed_id <- match("kolestrolilaakitys", datadesc$Name)
+
+fsins_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs_effpred/fsins")
+posterior <- as.array(fsins_blmm)
+
+cholmed_plot1 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id1,",",cholmed_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("chol.med. -> fsins, subject ", person_id1)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+cholmed_plot2 <- mcmc_areas(posterior, pars = paste0("personal_effect[",person_id2,",",cholmed_id,"]"), prob = 0.50, prob_outer = 0.95, point_est = "mean") + ggtitle(paste0("chol.med. -> fsins, subject ", person_id2)) + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+bayesplot_grid(plots = list(cholmed_plot1, cholmed_plot2), legends = FALSE)
 
 ```
 
@@ -823,3 +837,4 @@ R2 <- bayes_R2(fshdl.true, na.omit(pred_post$Y_pred))
 print(median(R2))
 ```
 
+#References
