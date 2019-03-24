@@ -7,7 +7,7 @@ bibliography: biblio.bib
 output:
   pdf_document: default
   html_document: default
-abstract: This notebook shows in detail how mixed-effect Bayesian network can be used to model the effects of nutrition. The hierarchical structure of the graphical model allows us to study the effects in both typical and personal levels. In addition we show that personal effect variations form clusters of similarly behaving patients. Finally, we show how personal graphical models can be predicted for patients that are held out from the model estimation. This shows that personal differences in nutrional effects do exist, and that they can be detected from repeated observations of food diaries and blood tests.
+abstract: This notebook is a supplemential material for the article. The notebook shows in detail how mixed-effect Bayesian network can be used to model the effects of nutrition. The hierarchical structure of the graphical model allows us to study the effects in both typical and personal levels. In addition we show that personal effect variations form clusters of similarly behaving patients. Finally, we show how personal graphical models can be predicted for patients that are held out from the model estimation. This shows that personal differences in nutrional effects do exist, and that they can be detected from repeated observations of food diaries and blood tests.
 ---
 
 ```{r setup, include=FALSE}
@@ -30,9 +30,9 @@ fixed_seed <- 678
 source("mebn/MEBN.r")
 ```
 
-In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network is a directed graphical model where nodes of the graph are random variables and the edges between the nodes indicate an effect between variables. In the nutritional modelling we assign the amount of nutrients at the person's diet and the indicators of person's well-being those as random variables, and then we study the effects between them. The goal is then to find the connections for the graph that most probably describes the correct conditional relationships between nutrients and their effects.
+In this work we propose a Bayesian network as an appealling way to model and predict the effects of nutrition. The Bayesian network are directed graphical models where nodes of the graph are random variables and the edges between the nodes indicate the effects between variables. In the nutritional modelling we assign the amount of nutrients at the person's diet and the indicators of person's well-being as those random variables, and we study the effects between them. The goal is then to find the connections for the graph that most probably describe the correct conditional relationships between nutrients and their effects.
 
-In this article we use this method to analyze a dataset from the Sysdimet study [@pmid21901116] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated. As we are interested in the personal variations of these nutritional effects we use a mixed-effect parametrization of Bayesian network [@Bae2016]. This allows us to estimate both typical and personal magnitudes of the nutritional effects with a same model.  
+As a practical example, we analyze a dataset from the Sysdimet study [@pmid21901116] that contains repeated measurements of 17 nutrients, some basic information about patients (gender, medication) and their corresponding blood test results. To ease the graph search, we focus only on two-level, bipartite, graphs where nutrients and personal details are assumed to affect blood tests, and only the magnitude of effect is left to be estimated. As we are interested in the personal variations of these nutritional effects we use a mixed-effect parametrization of Bayesian network [@Bae2016]. This allows us to estimate both typical and personal magnitudes of the nutritional effects with a same model.  
 
 #Formal definition of the nutritional effects model
 
@@ -51,18 +51,19 @@ By using the Bayes' Rule we can be split this probability into proportions of th
 
 This turns the problem to finding a graph that is most probable given data. To enforce our assumption of biologically plausible graphs, we set the graph prior \(P(G)\) to zero for all other graphs than the previously descibed bipartite graphs with nutrients affecting the bodily responses.
 
-The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. These probability distributions can be estimated separately and the novelity of our approach lies in their hierarchical mixed-effect estimation.
+The joint probability of the graph \(P(G|D)\) can furthermore factorized into separate local probability distributions [@Bae2016, @Koller:2009:PGM:1795555] by their \textit{Markov blankets}. Hierarchical mixed-effect estimation allows us to study the distributions in both typical and personal levels.
 
 **Hierarchical estimation of the local distributions**
 
-We are interested in the personal variations of how different nutrients affect. For this we need repeated measurements of nutrients in person's diet and the corresponding bodily responses. By collecting these personal sets of measurements we obtain a dataset from where we can estimate both typical and personal effects of nutrition. Modeling correctly this hierarchical structure of data should give us the best fitting model and also the parameters that explain the magnitudes of effects.
-
-Concretely, we can use generalized linear mixed-effect models to describe the local probability distributions of the Bayesian network. We assume that every  random variable at the network can be explaned with a probability distribution from an exponential family of distributions with linear link function with input from its parent nodes. We furthermore assume that the effect between variables can be factorized into typical and personal parts. Here typical part of the effect is denoted with coefficient $\beta$ and personal part as $b$
+The joint probability distribution of the graph is factorized into separate distributions. We assume that the blood test random variables $Y_i$ are affected by a linear combination of the nutrient variables $pa(Y_i)$. The set of parameters describing this effect, $\phi_i$, can be split into typical $\beta$ and personal $b$ parts. We assume that the actual data denoted by the random variables follows distributions from the exponential family and we can use some link function to use this linear predictor.
 
 \begin{align}
 \begin{split}
 \label{EXPFAM LME}
-{P}({Y_i}|{pa(Y_i), \phi_i, G_i}) = {EXPFAM}({Y_i} | pa(X_i)\beta_i + pa_Z(X_i)b_i, \sigma^2)
+{P}({D}|{G}){P}({G})
+& = \prod_{i=1}^{v} {P}({D}|{G_i}){P}({G_i}) \\
+& = \prod_{i=1}^{v} {P}({Y_i}|{pa(Y_i), \phi_i}){P}({G_i}) \\
+& = \prod_{i=1}^{v} {EXPFAM}({Y_i} | pa(Y_i)\beta_i + pa_Z(Y_i)b_i, \sigma^2){P}({G_i})
 \end{split}
 \end{align}
 
@@ -109,7 +110,7 @@ plot(initial_graph,
 
 We assume a connection from every nutrient and personal information to every blood test value at the dataset. The model search is then focused on to estimating optimal coefficients $\beta$ and $b$ that we use to define the strength of the connection. It is also important to find correct probability distributions for the random variables.
 
-Our starting assumption is that both nutrients and the blood test values are normally distributed. This assumption is naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
+Our starting assumption is that both nutrients and the blood test values are normally distributed. This assumption may be naive as it allows the blood tests to have negative values. We normalize all the input values to same scale, so that the estimated regression coefficients can be used as a indicators of connection strenght.
 
 ```{r graph_with_normal_rvs, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph, 
@@ -126,7 +127,7 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph,
 
 We can assess the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
 
-```{r normal_model_ppc, fig.height = 6, fig.width = 6, fig.align = "center", echo=FALSE, eval=FALSE, message=FALSE, cache=TRUE}
+```{r normal_model_ppc, fig.height = 4, fig.width = 4, fig.align = "center", echo=FALSE, eval=TRUE, message=FALSE, cache=FALSE}
 # Here a PPC plot of blood insulin illustrates the problem with fitting Normal distribution to biometric data that is positive and many times right skewed. 
 
 normal_targets <- assumedtargets[assumedtargets$Name=="fshdl",]
@@ -137,7 +138,7 @@ mebn.target_dens_overlays("BLMM_normal/", normal_targets, sysdimet)
 ```
 
 
-**Developing the model beyond the normal distribution**
+**Developing the model beyond normal distributions**
 
 More realistic probability distribution for blood test values would be Log-Normal or Gamma distributions [@10.1371/journal.pone.0021403]. They both allow only positive values and model better the right tail of individual larger values. For further development, we choose Gamma distribution with identity link function. This is important as it keeps the regression coefficients of the nutrients on the same absolute scale than with Normal models. The regression coefficients are used as weights of the edges at the Bayesian network and they all should be on the same scale regardless of the random variables' distribution. 
 
@@ -171,7 +172,7 @@ head(beta_coefs)
 
 **Graph probability approximation with LOO**
 
-Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria. It uses log probability that is calculated as part of the Stan models. We can approximate the probability of the whole graph by summing over the expected log predictive densities (ELPD) of every distict local distribution at the graph.
+Besides the visual inspection, we can also compare the models using LOO-PSIS information criteria (@Vehtari:2017:PBM:3095252.3095323). It uses log probability that is calculated as part of the Stan models. We can approximate the probability of the whole graph by summing over the expected log predictive densities (ELPD) of every distict local distribution at the graph.
 
 This shows how the local distributions with Normal and Gamma distribution compare to each other
 
@@ -187,6 +188,7 @@ kable(normal_vs_gamma) %>%
 
 
 As ELPD of the gamma model is higher, we should choose that for further development.
+
 
 
 **Modeling the varying response time with an autocorrelation structure**
@@ -417,7 +419,7 @@ By looking previous diagram we see that there are four clearly identifiable grou
 
 At this plot, zero of X-axis denotes a typical behaviour of that particular reaction, and blue and red bars denote a deviation from this typical mean.
 
-```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=9}
+```{r variation clusters1, echo=FALSE, eval=TRUE, fig.width=7, fig.height=7}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -564,9 +566,9 @@ for (i in c(1:nrow(assumedtargets)))
 }
 ```
 
-Number of clusters with nutritional effects only
-
 ```{r, echo=FALSE, eval=FALSE, fig.height=6}
+# Number of clusters with nutritional effects only
+
 library(stats)
 library(gridExtra)
 
@@ -764,6 +766,9 @@ personal_graph2 <- mebn.personal_graph(person_id = person_id2,
 write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 ```
 
+We can then compare the visualizations of the personal reaction graphs. The effect of cholesterol medication is most significant difference, but other differences exist as well.
+
+**Subject 94**
 
 ```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
@@ -772,14 +777,18 @@ personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
 layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 ```
 
-```{r personal_graphvisu2, eval=FALSE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+**Subject 37**
+
+```{r personal_graphvisu2, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
 layout <- mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
 ```
 
-```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=6}
+The graph visualizations show only the means of the effect magnitudes. We can also go deeper and inspect the posterior predictive distributions of the effects. Here are the effects of cholesterol medication and lignin to the blood insulin. The outline of the plot shows 95% credible interval and the dark band shows 50% credible interval. 
+
+```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=4}
 source("mebn/MEBN.r")
 library(bayesplot)
 color_scheme_set("purple")
@@ -797,7 +806,7 @@ bayesplot_grid(plots = list(lignin_plot1, lignin_plot2), legends = FALSE)
 
 ```
 
-```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=6}
+```{r, echo=FALSE, eval=TRUE, cache=FALSE, fig.height=4}
 source("mebn/MEBN.r")
 library(bayesplot)
 color_scheme_set("purple")

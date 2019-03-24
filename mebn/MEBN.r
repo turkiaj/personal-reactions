@@ -893,7 +893,7 @@ mebn.personal_graph <- function(person_id, reaction_graph, predictor_columns, as
 
 ##################################################
 
-mebn.plot_typical_effects <- function(reaction_graph, top_effects)
+mebn.plot_typical_effects <- function(reaction_graph, top_effects, graph_layout = NULL)
 {
   library(igraph)
   
@@ -921,11 +921,9 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
   
   # Graph layout
   V(visual_graph)$size = 5 
-  # - put all blood test values in own rank
-  bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
-  # - flip layout sideways, from left to right
-  gap <- 6
-  bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+  
+  if (is.null(graph_layout))
+    graph_layout <- mebn.layout_bipartite_horizontal(visual_graph, V(visual_graph)$type == "100") 
   
   # Align vertex labels according to graph level
   V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
@@ -937,7 +935,7 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
 
   plot(visual_graph, 
-       layout=bipa_layout, 
+       layout=graph_layout, 
        rescale=TRUE,
        vertex.label.family="Helvetica",
        vertex.label.color="black",
@@ -945,11 +943,28 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects)
        vertex.label.dist=4,
        edge.arrow.size=0.5,
        edge.arrow.width=1)
+  
+  return(graph_layout)
 }
 
 ##################################################
 
-mebn.plot_personal_effects <- function(personal_graph, top_effects)
+mebn.layout_bipartite_horizontal <- function(layout_graph, rank_condition)
+{
+  require(igraph)
+  
+  layout <- layout_as_bipartite(layout_graph, rank_condition)
+
+  # - flip layout sideways, from left to right
+  gap <- 6
+  layout <- cbind(layout[,2]*gap, layout[,1])
+  
+  return(layout)
+}
+
+##################################################
+  
+mebn.plot_personal_effects <- function(personal_graph, top_effects, graph_layout = NULL)
 {
   library(igraph)
   
@@ -978,13 +993,11 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   
   # Graph layout
   V(visual_graph)$size = 5
+
   # - put all blood test values in own rank
-  # "the positions within the rows are optimized to minimize edge crossings, using the Sugiyama algorithm"
-  # TODO: create a custom ordering of nodes to keep the order same 
-  bipa_layout <- layout_as_bipartite(visual_graph, types = V(visual_graph)$type == "100")
-  # - flip layout sideways, from left to right
-  gap <- 6
-  bipa_layout <- cbind(bipa_layout[,2]*gap, bipa_layout[,1])
+
+  if (is.null(graph_layout))
+    graph_layout <- mebn.layout_bipartite_horizontal(visual_graph, V(visual_graph)$type == "100") 
   
   # Align vertex labels according to graph level
   V(visual_graph)[V(visual_graph)$type == "100"]$label.degree = pi # left side
@@ -996,7 +1009,7 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
   
   plot(visual_graph, 
-       layout=bipa_layout, 
+       layout=graph_layout, 
        rescale=TRUE,
        vertex.label.family="Helvetica",
        vertex.label.color="black",
@@ -1005,6 +1018,8 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects)
        edge.arrow.size=0.5,
        edge.arrow.width=1,
        curved = 0)
+  
+  return(graph_layout)
 }
 
 ##################################################
@@ -1049,7 +1064,7 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
   
   # Color and size encoding for edges according to beta coefficient
   E(visual_graph)$color="gray"
-  E(visual_graph)$width = abs(E(visual_graph)$b_sigma) * 7
+  E(visual_graph)$width = abs(E(visual_graph)$b_sigma) * 6
   
   plot(visual_graph, 
        layout=bipa_layout, 
