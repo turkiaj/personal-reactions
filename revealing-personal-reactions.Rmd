@@ -255,6 +255,65 @@ kable(ar1_comparison) %>%
   row_spec(0,bold=TRUE)
 ```
 
+*************************
+
+Besides correlated residuals, we can also model the correlation between observations
+
+```{r graph_with_gamma_ar1, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_arr1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/arr1", 
+                                   stan_model_file = "mebn/BLMM_gamma_arr1.stan",
+                                   normalize_values = TRUE)
+
+mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.gexf")
+write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.graphml", "graphml")
+
+```
+
+```{r gamma_arr1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
+
+mebn.target_dens_overlays("BLMM_gamma/arr1/", temptarget, sysdimet)
+```
+
+Numerically the difference is also significant between models with AR(0) and AR(1)
+
+```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=TRUE}
+arr1_vs_ar1 <- mebn.LOO_comparison(temptarget, "BLMM_gamma/arr1", "BLMM_gamma/ar1")
+
+```
+```{r ar0_ar1_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
+kable(arr1_vs_ar1) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
+```
+
+
+
+
+Comparison summary of all the models with joint and marginal LOO
+
+```{r}
+source("mebn/MEBN.r")
+comp <- mebn.LOO_comparison3(assumedtargets, "BLMM_normal", "BLMM_gamma/hierarchical_idlink", "BLMM_gamma/ar1")
+comp <- rbind(comp, c("", sum(comp[,2]), sum(comp[,3]), sum(comp[,4])))
+
+kable(comp) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
+
+#kable(comp, "latex", booktabs = T) %>%
+#  kable_styling(latex_options = c("striped", "condensed"), full_width = TRUE) %>%
+#  row_spec(0,bold=TRUE)
+
+```
+
 
 #Typical effects of nutrition, and variance from the typical effects
 
@@ -471,6 +530,15 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 
 By looking at the absolute effect of the cholesterol medication it seems that there separetes two groups where one it is a significant factor in explaining blood insulin level, and other group where it does not play virtually any role. But does these patients even take cholesterol medications? Let's create a cross tabulation of observations to explore this effect more closely.
 
+```{r, eval=FALSE}
+library(factoextra)
+#https://uc-r.github.io/kmeans_clustering
+
+fviz_cluster(km, data = personal_effects)
+
+```
+
+
 ```{r cholmed_crosstab, echo=FALSE}
 
 tb <- table(sysdimet$kolestrolilaakitys, sysdimet$effect_group)
@@ -615,6 +683,13 @@ cluster_index <- seq(1:k)
 mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index, sort_by_amount = TRUE)
 ```
 
+
+```{r, eval=FALSE}
+library(factoextra)
+fviz_cluster(km, data = personal_effects)
+```
+
+
 ```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=8, fig.height=8}
 
 # Number of cluster centers 
@@ -637,6 +712,19 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 #mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, largest_personal_effects, feature_index)
 
 ```
+
+```{r, eval=FALSE}
+library(factoextra)
+fviz_cluster(km, data = personal_effects)
+
+# patients 1 and 7 seem to be in different clusters and far away from each other
+sysdimet[sysdimet$SUBJECT_ID=="S01",]$effect_group # 2
+sysdimet[sysdimet$SUBJECT_ID=="S07",]$effect_group # 4
+
+# effect_groupit eivät vastaa fvizin klustereiden numeroita??
+
+```
+
 
 In clusters 1 and 2 there are patients whose blood insulin levels react on lower and on higher than average. One interesting difference is lignin's effect to the blood insulin.
 
