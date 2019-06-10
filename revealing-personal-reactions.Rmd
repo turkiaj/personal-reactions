@@ -838,6 +838,22 @@ holdout_index[holdout_index == FALSE] <- 0
 #ligning_fsins[order(ligning_fsins$effect),]
 ```
 
+
+```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
+subjects <- levels(sysdimet$SUBJECT_ID)
+holdout_subject_index <- 1
+
+holdout_index <- as.vector(sysdimet$SUBJECT_ID)
+
+holdout_index[holdout_index == "S01"] <- 1
+holdout_index[holdout_index != "S01"] 
+
+holdout_index <- c(1,1,1,1, rep(0,length(sysdimet$SUBJECT_ID)-4))
+#holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
+holdout_index
+
+```
+
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
 
 ```{r shrinkage_parameters, echo=TRUE, message=FALSE}
@@ -856,6 +872,8 @@ shrinkage_parameters <- within(list(),
 Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -864,16 +882,27 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/1"), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_pred.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_01.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs_effpred/", assumedtargets, sysdimet[holdout_index==0,])
+t<-assumedtargets[assumedtargets$Name=="fsins",]
+source("mebn/MEBN.r")
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/1/", t, sysdimet[holdout_index==0,])
+```
+
+```{r}
+# Compare true and predicted values for holdout person
+
+source("mebn/MEBN.r")
+target_variables<-assumedtargets[assumedtargets$Name=="fsins",]
+
+mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/1/", target_variables, sysdimet[holdout_index==1,])
 ```
 
 

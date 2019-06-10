@@ -396,7 +396,7 @@ mebn.localsummary <- function(fit)
 mebn.personal_effects <- function(fit, person_id)
 {
   #  mean      se_mean         sd          10%         90%     n_eff      Rhat
-  ms <- summary(fit, pars=c("b", "personal_effect"), probs=c(0.10, 0.90))
+  ms <- summary(fit, pars=c("b", "personal_effect"), probs=c(0.10, 0.90), na.rm = TRUE)
   
   ModelSummary <- within(list(),
                          {
@@ -526,6 +526,110 @@ mebn.LOO_comparison <- function(target_variables, graphdir1, graphdir2)
 
 ##################################################
 
+mebn.LOO_comparison3 <- function(target_variables, graphdir1, graphdir2, graphdir3, N)
+{
+  library(loo)
+  
+  comparison<-data.frame(matrix(nrow=nrow(target_variables), ncol=7))
+  colnames(comparison) <- c("distribution", graphdir1, "bad_k", graphdir2, "bad_k", graphdir3, "bad_k")
+  
+  n <- 1
+  for (targetname in target_variables$Name)
+  {
+    # Get models to compare
+    m1 <- mebn.get_localfit(paste0(graphdir1, "/", targetname))
+    m2 <- mebn.get_localfit(paste0(graphdir2, "/", targetname))
+    m3 <- mebn.get_localfit(paste0(graphdir3, "/", targetname))
+    
+    # Statistics for model 1
+    m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
+    
+    if (exists("m1_rel_n_eff")) remove(m1_rel_n_eff)
+    if (exists("m1_loo")) remove(m1_loo)
+    
+    if (!any(is.na(exp(m1_loglik))))
+    {
+      m1_rel_n_eff <- relative_eff(exp(m1_loglik))
+      suppressWarnings(m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4))
+    }
+    
+    # Statistics for model 2
+    m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
+    
+    if (exists("m2_rel_n_eff")) remove(m2_rel_n_eff)
+    if (exists("m2_loo")) remove(m2_loo)
+    
+    if (!any(is.na(exp(m2_loglik))))
+    {
+      m2_rel_n_eff <- relative_eff(exp(m2_loglik))
+      suppressWarnings(m2_loo <- loo(m2_loglik, r_eff = m2_rel_n_eff, cores = 4))
+    }
+
+    # Statistics for model 3
+    m3_loglik <- extract_log_lik(m3, merge_chains = FALSE)
+    
+    if (exists("m3_rel_n_eff")) remove(m3_rel_n_eff)
+    if (exists("m3_loo")) remove(m3_loo)
+    
+    if (!any(is.na(exp(m3_loglik))))
+    {
+      m3_rel_n_eff <- relative_eff(exp(m3_loglik))
+      suppressWarnings(m3_loo <- loo(m3_loglik, r_eff = m3_rel_n_eff, cores = 4))
+    }
+    
+    comparison[n,1] <- targetname
+    
+    if (exists("m1_loo")) {
+      comparison[n,2] <- m1_loo$estimates[1,2]
+      
+      high_pareto_k <- length(pareto_k_ids(m1_loo, threshold = 0.7))
+      high_k_percent <- high_pareto_k/N*100
+      
+      comparison[n,3] <- high_k_percent
+    }
+    else
+    {
+      comparison[n,2] <- "NA"
+      comparison[n,3] <- "NA"
+    }
+    
+    if (exists("m2_loo"))
+    {
+      comparison[n,4] <- m2_loo$estimates[1,2]
+      
+      high_pareto_k <- length(pareto_k_ids(m2_loo, threshold = 0.7))
+      high_k_percent <- high_pareto_k/N*100
+      
+      comparison[n,5] <- high_k_percent
+    }
+    else
+    {
+      comparison[n,4] <- "NA"
+      comparison[n,5] <- "NA"
+    }
+
+    if (exists("m3_loo"))
+    {
+      comparison[n,6] <- m3_loo$estimates[1,2]
+      
+      high_pareto_k <- length(pareto_k_ids(m3_loo, threshold = 0.7))
+      high_k_percent <- high_pareto_k/N*100
+      
+      comparison[n,7] <- high_k_percent
+    }
+    else
+    {
+      comparison[n,6] <- "NA"
+      comparison[n,7] <- "NA"
+    }
+
+    n <- n + 1
+  }
+  
+  return(comparison)
+}
+
+##################################################
 mebn.linpred <- function(X, beta, Z, b, g_alpha)
 {
   
@@ -553,7 +657,7 @@ mebn.AR_comparison <- function(target_variables, graphdir)
     c3 <- "NA"
     c4 <- "NA"
     
-    s1 <- summary(m1, pars=c("ar1"), probs=c(0.10, 0.90))
+    s1 <- summary(m1, pars=c("ar1"), probs=c(0.10, 0.90), na.rm = TRUE)
     #m1_extract <- extract(m1, pars = c("ar1"))
   
     ar_table[n,1] <- targetname
@@ -601,6 +705,39 @@ mebn.target_dens_overlays <- function(localfit_directory, target_variables, data
   }
   
   bayesplot_grid(plots = dens_plots, legends = FALSE)
+}
+
+##################################################
+
+mebn.evaluate_predictions <- function(localfit_directory, target_variables, dataset)
+{
+  library(rstan)
+  library(bayesplot)
+  library(ggplot2)
+  
+  color_scheme_set("purple")
+
+  rec_plots <- list()
+  i <- 1
+  
+  for (targetname in target_variables$Name)
+  {
+    target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+    true_value <- as.vector(dataset[,targetname])
+    
+    draws <- as.matrix(target_blmm)
+    
+    obs <- length(true_value)
+    
+    p1 <- match("Y_pred[1]",colnames(draws))
+    p2 <- match(paste0("Y_pred[", obs, "]"),colnames(draws))
+    
+    # https://mc-stan.org/bayesplot/reference/MCMC-recover.html
+    rec_plots[[i]] <- mcmc_recover_hist(draws[, p1:p2], true_value[1:obs])
+    i <- i + 1
+  }
+  
+  bayesplot_grid(plots = rec_plots, legends = FALSE)
 }
 
 ##################################################
@@ -751,12 +888,14 @@ mebn.PersonalSignificanceTest <- function(personal_coef)
 
 ##################################################
 
-mebn.bipartite_model <- function(reaction_graph, inputdata, targetdata, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
+mebn.bipartite_model <- function(reaction_graph, inputdata, targetdata = NULL, predictor_columns, assumed_targets, group_column, local_model_cache, stan_model_file, local_estimation, normalize_values = TRUE, reg_params = NULL)
 {
   for (c in 1:dim(assumed_targets)[1])
   {
     target_column <- assumed_targets[c,]
     target_name <- as.vector(target_column$Name)
+    
+    print(target_name)
     
     localfit <- local_estimation(inputdata, targetdata, predictor_columns, target_column, group_column, local_model_cache, stan_model_file, normalize_values, reg_params)
     
