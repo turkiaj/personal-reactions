@@ -26,9 +26,19 @@ data {
 transformed data { 
   // Centering data for more stable sampling 
   int Pc; 
-  matrix[N, p - 1] Xc;    // X centered
-  matrix[N, p - 1] Xp;    // X without intercept, non-centered
+  matrix[N, p-1] Xc;    // X centered
+  matrix[N, p-1] Xp;    // X without intercept, non-centered
   vector[p - 1] means_X;  // column means of X before centering 
+  
+  matrix[N-NH,p-1] X_t; // training input
+  matrix[N-NH,k] Z_t;   // training input
+  vector[N-NH] Y_t;     // training response
+  int t=1;              // index 
+
+  matrix[NH,p-1] X_h;   // holdout input
+  matrix[NH,k] Z_h;     // holdout input
+  vector[NH] Y_h;       // holdout response
+  int h=1;              // index 
   
   Pc = p - 1;  // the intercept is removed from the design matrix 
   for (i in 2:p) { 
@@ -36,6 +46,26 @@ transformed data {
      Xc[, i - 1] = X[, i] - means_X[i - 1]; 
      Xp[, i - 1] = X[, i];
   }
+  
+  // TODO: Filter the holdout data to separate matrix
+  
+  for (n in 1:N)
+  {
+    if (holdout[n] == 1)
+    {
+      X_h[h] = Xp[n];
+      Z_h[h] = Z[n];
+      Y_h[h] = Y[n];
+      h += 1;
+    }
+    else
+    {
+      X_t[t] = Xp[n];
+      Z_t[t] = Z[n];
+      Y_t[t] = Y[n];
+      t += 1;
+    }
+  }  
 }
 
 parameters { 
@@ -90,7 +120,7 @@ transformed parameters {
 }
 
 model { 
-  vector[N] e;            // residuals
+  //vector[N] e;            // residuals
   real mu;                // linear prediction 
   real g_beta;            // beta (rate) of Gamma distribution
   int group_size = 0;     // group variables for AR computation
@@ -112,10 +142,62 @@ model {
     z[j] ~ normal(0,1);
 
   // Calculate posterior probability with training data only
-  for (n in 1:N) 
+  for (n in 1:N-NH) 
   {
     // typical effect
-    mu = offset + temp_Intercept + Xc[n] * beta;
+    mu = offset + temp_Intercept + X_t[n] * beta;
+    
+    // - add personal effects
+    mu += Z_t[n] * b[group[n]];
+  
+    // - calculate residuals     
+    //e[n] = Y[n] - mu; 
+    
+    if (current_group != group[n]) {
+      current_group = group[n];
+      group_size = 1;
+    } 
+    else
+      group_size += 1;
+  
+    // - add autoregression coefficient from previous possibly correlated observation
+    // (does correlated residuals make sense in GLMs?)
+    if (group_size > 1)
+      mu += Y_t[n-1] * ar1;
+
+    // - use identity link for mu
+    g_beta = g_alpha / mu;
+
+    // Likelihood: hierarchical gamma regression 
+    //Y[n] ~ gamma(g_alpha, g_beta);
+    target += gamma_lpdf(Y_t[n] | g_alpha, g_beta);
+  }
+}
+
+generated quantities { 
+  real beta_Intercept;            // population-level intercept 
+  //corr_matrix[k] C;             // correlation matrix 
+  vector[NH] Y_pred;              // predicted response
+  vector[N-NH] Y_rep;             // repeated response
+  //vector[N] log_lik;            // log-likelihood for LOO
+  real mu_hat;
+  real g_beta_hat;
+  int group_size = 0;     // group variables for AR computation
+  int current_group = -1; // group variables for AR computation
+
+  vector[k-1] personal_effect[J];
+
+  // Correlation matrix of random-effects, C = L'L
+  //C = multiply_lower_tri_self_transpose(L); 
+  
+  //beta_Intercept = temp_Intercept - dot_product(means_X, beta);
+  beta_Intercept = temp_Intercept + offset;
+
+  // Posterior prediction for holdout person
+  for (n in 1:NH)
+  {
+    //mu_hat = offset + temp_Intercept + Xc[n] * beta + Z[n] * b[group[n]];
+    mu_hat = beta_Intercept + X_h[n] * beta + Z_h[n] * b[group[n]];
     
     if (current_group != group[n]) {
       current_group = group[n];
@@ -124,62 +206,40 @@ model {
     else
       group_size += 1;
 
-    // - add personal effects
-    mu += Z[n] * b[group[n]];
-  
-    // - calculate residuals     
-    e[n] = Y[n] - mu; 
-  
-    // - add autoregression of correlated residuals
+    // - add autoregression coefficient from previous possibly correlated observation 
     if (group_size > 1)
-      mu += e[n-1] * ar1;
-
-    // - use identity link for mu
-    g_beta = g_alpha / mu;
-  
-    if (holdout[n] == 0)
-    {    
-      // Likelihood: hierarchical gamma regression 
-      //Y[n] ~ gamma(g_alpha, g_beta);
-      target += gamma_lpdf(Y[n] | g_alpha, g_beta);
-    }
-  }
-}
-
-generated quantities { 
-  real beta_Intercept;            // population-level intercept 
-  //corr_matrix[k] C;             // correlation matrix 
-  vector[NH] Y_pred;              // predicted response
-  //vector[N] log_lik;            // log-likelihood for LOO
-  real mu_hat;
-  real g_beta_hat;
-  int i;
-
-  vector[k-1] personal_effect[J];
-
-  // Correlation matrix of random-effects, C = L'L
-  //C = multiply_lower_tri_self_transpose(L); 
-  
-  // Posterior predictive distribution for holdout persons
-
-  i = 1;
-  for (n in 1:N)
-  {
-    if (holdout[n] == 1)
-    {
-      //beta_Intercept = temp_Intercept - dot_product(means_X, beta);
-      beta_Intercept = temp_Intercept + offset;
-
-      //mu_hat = offset + temp_Intercept + Xc[n] * beta + Z[n] * b[group[n]];
-      mu_hat = beta_Intercept + Xp[n] * beta + Z[n] * b[group[n]];
-
+      mu_hat += Y_h[n-1] * ar1;
+      
       g_beta_hat = g_alpha / mu_hat;
-      Y_pred[i] = gamma_rng(g_alpha, g_beta_hat);
-      i = i + 1;
-    }
+      Y_pred[n] = gamma_rng(g_alpha, g_beta_hat);
+  }
+
+  // Posterior predictive distribution for model checking
+
+  group_size = 0;     // group variables for AR computation
+  current_group = -1; // group variables for AR computation
+
+  for (n in 1:N-NH)
+  {
+    //mu_hat = offset + temp_Intercept + Xc[n] * beta + Z[n] * b[group[n]];
+    mu_hat = beta_Intercept + X_t[n] * beta + Z_t[n] * b[group[n]];
+    
+    if (current_group != group[n]) {
+      current_group = group[n];
+      group_size = 1;
+    } 
+    else
+      group_size += 1;
+
+    // - add autoregression coefficient from previous possibly correlated observation 
+    if (group_size > 1)
+      mu_hat += Y_t[n-1] * ar1;
+      
+      g_beta_hat = g_alpha / mu_hat;
+      Y_rep[n] = gamma_rng(g_alpha, g_beta_hat);
   }
   
-  // calculate personal effects for both holdout and training set 
+  // Personal effects for both training and holdout persons 
   for (j in 1:J) 
   {
     personal_effect[j] = beta + b[j][2:k];

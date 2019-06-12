@@ -274,11 +274,6 @@ write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.graphml", "graphml")
 
 ```
 
-```{r gamma_arr1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
-temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
-
-mebn.target_dens_overlays("BLMM_gamma/arr1/", temptarget, sysdimet)
-```
 
 Numerically the difference is also significant between models with AR(0) and AR(1)
 
@@ -848,7 +843,7 @@ holdout_index <- as.vector(sysdimet$SUBJECT_ID)
 holdout_index[holdout_index == "S01"] <- 1
 holdout_index[holdout_index != "S01"] 
 
-holdout_index <- c(1,1,1,1, rep(0,length(sysdimet$SUBJECT_ID)-4))
+holdout_index <- c(0,0,0,0,1,1,1,1, rep(0,length(sysdimet$SUBJECT_ID)-8))
 #holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
 holdout_index
 
@@ -882,7 +877,7 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/1"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/2"), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
@@ -891,10 +886,16 @@ write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_01.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
-t<-assumedtargets[assumedtargets$Name=="fsins",]
-source("mebn/MEBN.r")
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/1/", t, sysdimet[holdout_index==0,])
+#t<-assumedtargets[assumedtargets$Name=="fsins",]
+#source("mebn/MEBN.r")
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==0,])
 ```
+
+```{r gamma_arr1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", temptarget, sysdimet[sysdimet$SUBJECT_ID!='S02',])
+```
+
 
 ```{r}
 # Compare true and predicted values for holdout person
@@ -902,7 +903,7 @@ mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/1/", t, sysdimet[holdout_index==0,
 source("mebn/MEBN.r")
 target_variables<-assumedtargets[assumedtargets$Name=="fsins",]
 
-mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/1/", target_variables, sysdimet[holdout_index==1,])
+mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==1,])
 ```
 
 
