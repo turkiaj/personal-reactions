@@ -1279,19 +1279,23 @@ mebn.compare_typicals <- function(bn1, bn2)
   library(igraph)
   
   # - find beta nodes of both normal and gamma distributions 
-  normal_nodes <- V(bn1)
-  n_beta <- normal_nodes[normal_nodes$type=="beta"]
+  model1_nodes <- V(bn1)
+  m1_beta <- model1_nodes[model1_nodes$type=="beta"]
   
-  gamma_nodes <- V(bn2)
-  g_beta <- gamma_nodes[gamma_nodes$type=="beta"]
+  model2_nodes <- V(bn2)
+  m2_beta <- model2_nodes[model2_nodes$type=="beta"]
   
   # - construct a table for comparing the estimates
-  typical_effects<-data.frame(matrix(NA, nrow=length(n_beta), ncol=0))
+  typical_effects<-data.frame(matrix(NA, nrow=length(m1_beta), ncol=0))
   
-  typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", n_beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+  typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", m1_beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
   
-  typical_effects$model1 <- round(n_beta$value,6)
-  typical_effects$model2 <- round(g_beta$value,6)
+  typical_effects$model1 <- round(m1_beta$value,6)
+  typical_effects$model1_lCI <- round(m1_beta$value_lCI,6)
+  typical_effects$model1_hCI <- round(m1_beta$value_uCI,6)
+  typical_effects$model2 <- round(m2_beta$value,6)
+  typical_effects$model2_lCI <- round(m2_beta$value_lCI,6)
+  typical_effects$model2_hCI <- round(m2_beta$value_uCI,6)
   
   return(typical_effects)
 }

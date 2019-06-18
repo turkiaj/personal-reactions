@@ -123,14 +123,16 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph,
                                          stan_model_file = "mebn/BLMM_normal.stan",
                                          normalize_values = TRUE)
 
+write.graph(sysdimet_normal, "sysdimet_normal.graphml", "graphml")
+
 ```
 
 We can assess the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
 
 ```{r normal_model_ppc, fig.height = 4, fig.width = 4, fig.align = "center", echo=FALSE, eval=TRUE, message=FALSE, cache=FALSE}
 # Here a PPC plot of blood insulin illustrates the problem with fitting Normal distribution to biometric data that is positive and many times right skewed. 
-
 normal_targets <- assumedtargets[assumedtargets$Name=="fshdl",]
+normal_targets <- assumedtargets
 normal_targets$ScaleMin <- -10
 normal_targets$ScaleMax <- 25
 
@@ -154,6 +156,8 @@ sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph,
                                    local_model_cache = "models/BLMM_gamma/identity", 
                                    stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
                                    normalize_values = TRUE)
+
+write.graph(sysdimet_gamma, "sysdimet_gamma.graphml", "graphml")
 ```
 
 The visual comparison of the true and estimated distributions of blood test variables shows that Gamma distribution follows the true distributions quite well. The estimate has lots of variance and we should focus on that next.
@@ -165,9 +169,16 @@ mebn.target_dens_overlays("BLMM_gamma/identity/", assumedtargets, sysdimet)
 
 ```{r effect_comparison, eval=FALSE, echo=FALSE}
 #As we see here, the regression coefficients are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
+source("mebn/MEBN.r")
+
+sysdimet_normal <- read_graph("sysdimet_normal.graphml", "graphml")
+sysdimet_gamma <- read_graph("sysdimet_gamma.graphml", "graphml")
 
 beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
-head(beta_coefs)
+
+kable(beta_coefs, caption = "Comparison of beta coefficients between Normal and Gamma models") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
 ```
 
 **Graph probability approximation with LOO**
@@ -882,7 +893,7 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_01.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_02.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
@@ -901,9 +912,93 @@ mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", temptarget, sysdimet[sysdimet
 # Compare true and predicted values for holdout person
 
 source("mebn/MEBN.r")
-target_variables<-assumedtargets[assumedtargets$Name=="fsins",]
+target_variables<-assumedtargets[assumedtargets$Name=="fsldl",]
 
 mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==1,])
+
+# Add delta from previous measurement
+
+sysdimet$fsldl_delta <- 0
+
+sysdimet[sysdimet$WEEK == 12,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 12,]$fsldl - sysdimet[sysdimet$WEEK == 8,]$fsldl
+sysdimet[sysdimet$WEEK == 8,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 8,]$fsldl - sysdimet[sysdimet$WEEK == 4,]$fsldl
+sysdimet[sysdimet$WEEK == 4,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 4,]$fsldl - sysdimet[sysdimet$WEEK == 0,]$fsldl
+
+# true delta
+sysdimet[sysdimet$SUBJECT_ID == 'S02',]$fsldl_delta
+sysdimet[sysdimet$SUBJECT_ID == 'S02',]$fsldl
+
+week0 <- sysdimet[sysdimet$SUBJECT_ID == 'S02' & sysdimet$WEEK == 0,]$fsldl
+week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == 'S02' & sysdimet$WEEK >= 4,]$fsldl)/3
+
+week12_avg - week0
+```
+
+```{r}
+# predicted delta
+targetname <- "fsldl"    
+localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
+target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
+
+pred<-as.data.frame(ms$summary[1:4,1])
+pred$delta<-0
+pred <- cbind(pred, c(0,4,8,12))
+colnames(pred) <- c("pred_value", "delta", "week")
+
+pred[pred$week == 12,]$delta <- pred[pred$week == 12,]$pred_value - pred[pred$week == 8,]$pred_value
+pred[pred$week == 8,]$delta <- pred[pred$week == 8,]$pred_value - pred[pred$week == 4,]$pred_value
+pred[pred$week == 4,]$delta <- pred[pred$week == 4,]$pred_value - pred[pred$week == 0,]$pred_value
+pred$pred_value
+
+pred_week12_avg <- sum(pred[pred$week >= 4,]$pred_value)/3
+pred_week12_avg - week0
+```
+
+
+```{r}
+targetname <- "fsldl"    
+localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
+dataset <- sysdimet[sysdimet$SUBJECT_ID == 'S06',]
+
+    target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+    true_value <- as.vector(dataset[,targetname])
+
+    draws <- as.matrix(target_blmm)
+    obs <- length(true_value)
+
+    p1 <- match("Y_rep[9]",colnames(draws))
+    p2 <- match(paste0("Y_rep[", 9+obs-1, "]"),colnames(draws))
+    
+    # https://mc-stan.org/bayesplot/reference/MCMC-recover.html
+    rec_plot <- mcmc_recover_hist(draws[, p1:p2], true_value[1:obs])
+    rec_plot
+    
+```
+
+
+```{r personal_graph1, echo=FALSE, eval=FALSE}
+# set eval=FALSE if you need to need to upd
+source("mebn/MEBN.r")
+
+# TODO: Begin with a fully connected graph, update it with a typical information and here update the personal info
+
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+personal_graph_S02 <- mebn.personal_graph(person_id = 2, 
+                                       reaction_graph = initial_graph, 
+                                       predictor_columns = assumedpredictors, 
+                                       assumed_targets = assumedtargets, 
+                                       local_model_cache = "BLMM_gamma/ar1_rhs/2/")
+
+write.graph(personal_graph_S02, "subject_02.graphml", "graphml")
+```
+
+
+```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+require(igraph)
+personal_graph_S02 <- read.graph("subject_02.graphml", "graphml")
+layout <- mebn.plot_personal_effects(personal_graph_S02, 20, graph_layout)
 ```
 
 
