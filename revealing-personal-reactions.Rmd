@@ -268,21 +268,42 @@ kable(ar1_comparison) %>%
 
 Besides correlated residuals, we can also model the correlation between observations
 
-```{r graph_with_gamma_ar1, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+```{r gamma_rhs_arr1_model, echo=TRUE, message=FALSE}
+# no holdout
+holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
+
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
+
+```{r graph_with_gamma_rhs_arr1, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_arr1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
+                                   targetdata = holdout_index,
                                    predictor_columns = assumedpredictors, 
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = "models/BLMM_gamma/arr1", 
-                                   stan_model_file = "mebn/BLMM_gamma_arr1.stan",
+                                   local_model_cache = "models/BLMM_gamma/rhs_arr1", 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.gexf")
-write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.graphml", "graphml")
+write_graph(sysdimet_gamma_arr1, "sysdimet_gamma_arr1.graphml", "graphml")
 
+```
+
+```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/rhs_arr1/", assumedtargets, sysdimet)
 ```
 
 
@@ -846,18 +867,11 @@ holdout_index[holdout_index == FALSE] <- 0
 
 
 ```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-subjects <- levels(sysdimet$SUBJECT_ID)
-holdout_subject_index <- 1
+holdout_number <- 7
+holdout_subject <- sprintf("S%02d", holdout_number)
 
-holdout_index <- as.vector(sysdimet$SUBJECT_ID)
-
-holdout_index[holdout_index == "S01"] <- 1
-holdout_index[holdout_index != "S01"] 
-
-holdout_index <- c(0,0,0,0,1,1,1,1, rep(0,length(sysdimet$SUBJECT_ID)-8))
-#holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
+holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
 holdout_index
-
 ```
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
@@ -888,12 +902,12 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/2"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/7"), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_02.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_7.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}

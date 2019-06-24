@@ -1,0 +1,152 @@
+---
+title: "Model summary"
+author: "Jari Turkia"
+date: "6/24/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(kableExtra) # for good looking tables
+
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+
+# this allows using tikz rendering for plots with "dev=tikz"
+knit_hooks$set(plot = function(x, options) {
+  if ('tikz' %in% options$dev && !options$external) {
+    hook_plot_tex(x, options)
+  } else hook_plot_md(x, options)
+})
+
+# Fix seed for random number generator for getting consistent results in kmeans etc.
+fixed_seed <- 678
+
+# Load common MEBN package
+source("mebn/MEBN.r")
+```
+
+```{r data_loading, echo=FALSE, message=FALSE}
+
+# Read the data description
+datadesc <- read.csv(file="Data description.csv", header = TRUE, sep = ";")
+
+# Read the actual data matching the description
+sysdimet <- read.csv(file="data/SYSDIMET_diet.csv", sep=";", dec=",")
+
+# Define how to iterate through the graph
+assumedpredictors <- datadesc[datadesc$Order==100,]    
+assumedtargets <- datadesc[datadesc$Order==200,] 
+```
+
+```{r calculate_true_delta, echo=FALSE, eval=FALSE, message=FALSE}
+# Add delta from previous measurement
+
+sysdimet[c("SUBJECT_ID", "WEEK", as.vector(assumedtargets$Name))]
+
+sysdimet_delta <- sysdimet[c("SUBJECT_ID", "WEEK")]
+sysdimet_delta$reponse <- 
+sysdimet_delta$delta 
+
+sysdimet_delta
+
+for (s in levels(sysdimet$SUBJECT_ID))
+{
+}
+
+sysdimet$fsldl_delta <- 0
+sysdimet[sysdimet$WEEK == 12,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 12,]$fsldl - sysdimet[sysdimet$WEEK == 8,]$fsldl
+sysdimet[sysdimet$WEEK == 8,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 8,]$fsldl - sysdimet[sysdimet$WEEK == 4,]$fsldl
+sysdimet[sysdimet$WEEK == 4,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 4,]$fsldl - sysdimet[sysdimet$WEEK == 0,]$fsldl
+
+
+
+```
+
+```{r}
+# Summary matrix
+summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
+rownames(summary.mat) <- assumedtargets$Name
+colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
+
+number_of_preds <- 0
+```
+
+```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
+holdout_number <- 2
+holdout_subject <- sprintf("S%02d", holdout_number)
+
+holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
+```
+
+```{r}
+# Compare true and predicted values for holdout person
+
+targetname <- "fsldl"    
+
+target_variables<-assumedtargets[assumedtargets$Name==targetname,]
+
+#mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==1,])
+
+# true delta
+sysdimet[sysdimet$SUBJECT_ID == holdout_subject,]$fsldl_delta
+
+
+week0 <- sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK == 0,]$fsldl
+week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK >= 4,]$fsldl)/3
+week12_true_change <- week12_avg - week0
+
+week0 <- sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK == 0,]$fsldl
+week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK >= 4,]$fsldl)/3
+week12_true_change <- week12_avg - week0
+```
+
+
+```{r}
+# predicted delta
+localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
+target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
+
+#pred<-as.data.frame(ms$summary[1:4,c(1,4,5)])
+pred<-as.data.frame(ms$summary[1:4,c(1)])
+pred$delta<-0
+pred <- cbind(pred, c(0,4,8,12))
+
+colnames(pred) <- c("pred_value", "delta", "week")
+
+pred[pred$week == 12,]$delta <- pred[pred$week == 12,]$pred_value - pred[pred$week == 8,]$pred_value
+pred[pred$week == 8,]$delta <- pred[pred$week == 8,]$pred_value - pred[pred$week == 4,]$pred_value
+pred[pred$week == 4,]$delta <- pred[pred$week == 4,]$pred_value - pred[pred$week == 0,]$pred_value
+pred$pred_value
+
+pred_week12_avg <- sum(pred[pred$week >= 4,]$pred_value)/3
+week12_pred_change <- pred_week12_avg - week0
+```
+
+```{r}
+# Summary matrix
+summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
+rownames(summary.mat) <- assumedtargets$Name
+colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
+
+number_of_preds <- 0
+
+number_of_preds <- number_of_preds + 1
+
+summary.mat[2,1:3] <- summary.mat[2,1:3] + as.numeric(sign(pred$delta[2:4]) == sign(sysdimet[sysdimet$SUBJECT_ID == holdout_subject,]$fsldl_delta[2:4]))
+summary.mat[2,4] <- summary.mat[2,4] + as.numeric(sign(week12_pred_change) == sign(week12_true_change))
+
+summary.mat
+
+
+```
+
+
+## Model evaluation summary
+
+This visualization summarizes how accurately we can predict if blood test values raise or lower when the current level and a diet are known. 
+
+```{r model_summary}
+
+```
+
