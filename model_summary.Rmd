@@ -38,115 +38,231 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
-```{r calculate_true_delta, echo=FALSE, eval=FALSE, message=FALSE}
-# Add delta from previous measurement
+```{r}
+library(dplyr)
+library(tidyr)
+library(kableExtra)
 
-sysdimet[c("SUBJECT_ID", "WEEK", as.vector(assumedtargets$Name))]
+true_values <- sysdimet[c("SUBJECT_ID", "WEEK", as.vector(assumedtargets$Name))]
 
-sysdimet_delta <- sysdimet[c("SUBJECT_ID", "WEEK")]
-sysdimet_delta$reponse <- 
-sysdimet_delta$delta 
-
-sysdimet_delta
-
-for (s in levels(sysdimet$SUBJECT_ID))
-{
+get_true_response <- function(holdout_number) {
+  
+  #holdout_subject <- sprintf("S%02d", holdout_number)
+  holdout_subject <- levels(sysdimet$SUBJECT_ID)[holdout_number]
+  
+  true_response <- true_values %>%
+    filter(SUBJECT_ID == holdout_subject) %>%
+    select(as.vector(assumedtargets$Name)) %>%
+    t %>%
+    as.matrix
+  
+  colnames(true_response) <- c(0,4,8,12)
+  return(true_response)
 }
 
-sysdimet$fsldl_delta <- 0
-sysdimet[sysdimet$WEEK == 12,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 12,]$fsldl - sysdimet[sysdimet$WEEK == 8,]$fsldl
-sysdimet[sysdimet$WEEK == 8,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 8,]$fsldl - sysdimet[sysdimet$WEEK == 4,]$fsldl
-sysdimet[sysdimet$WEEK == 4,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 4,]$fsldl - sysdimet[sysdimet$WEEK == 0,]$fsldl
+get_pred_response <- function(localfit_directory) {
 
+  pred_response <- NULL
+  
+  for (targetname in assumedtargets$Name)
+  {
+    print(targetname)
+    target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+    ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
+  
+    if (is.null(pred_response))
+      pred_response <- as.vector(ms$summary[1:4,c(1)])
+    else
+      pred_response <- rbind(pred_response, as.vector(ms$summary[1:4,c(1)]))
+  }
+  
+  colnames(pred_response) <- c(0,4,8,12)
+  rownames(pred_response) <- as.vector(assumedtargets$Name)
+  
+  return(pred_response)
+}
 
+get_rep_response_for_all <- function(localfit_directory) {
+
+  rep_response <- NULL
+  
+  for (targetname in assumedtargets$Name)
+  {
+    target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+    ms <- rstan::summary(target_blmm, pars=c("Y_rep"), probs=c(0.10, 0.90), na.rm = TRUE)
+
+    if (is.null(rep_response))
+      rep_response <- as.vector(ms$summary[,c(1)])
+    else
+      rep_response <- rbind(rep_response, as.vector(ms$summary[,c(1)]))
+  }
+
+  rownames(rep_response) <- as.vector(assumedtargets$Name)
+  
+  return(rep_response)
+}
+
+get_rep_response <- function(rep_matrix, subject_number) {
+
+  s <- (subject_number-1)*4 + 1
+  e <- s + 3
+  
+  return(rep_matrix[,s:e])
+}  
+
+make_delta <- function(true_response)
+{
+  true_delta <- true_response
+  true_delta[,4] <- true_delta[,4] - true_delta[,3]
+  true_delta[,3] <- true_delta[,3] - true_delta[,2]
+  true_delta[,2] <- true_delta[,2] - true_delta[,1]
+  true_delta[,1] <- 0
+  
+  return(true_delta)
+}
 
 ```
 
+
 ```{r}
-# Summary matrix
+# Summary matrix for RHS model
+
 summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
 rownames(summary.mat) <- assumedtargets$Name
 colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
 
-number_of_preds <- 0
-```
-
-```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-holdout_number <- 2
-holdout_subject <- sprintf("S%02d", holdout_number)
-
-holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
-```
-
-```{r}
-# Compare true and predicted values for holdout person
-
-targetname <- "fsldl"    
-
-target_variables<-assumedtargets[assumedtargets$Name==targetname,]
-
-#mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==1,])
-
-# true delta
-sysdimet[sysdimet$SUBJECT_ID == holdout_subject,]$fsldl_delta
-
-
-week0 <- sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK == 0,]$fsldl
-week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK >= 4,]$fsldl)/3
-week12_true_change <- week12_avg - week0
-
-week0 <- sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK == 0,]$fsldl
-week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == holdout_subject & sysdimet$WEEK >= 4,]$fsldl)/3
-week12_true_change <- week12_avg - week0
-```
-
-
-```{r}
-# predicted delta
-localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
-target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
-ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
-
-#pred<-as.data.frame(ms$summary[1:4,c(1,4,5)])
-pred<-as.data.frame(ms$summary[1:4,c(1)])
-pred$delta<-0
-pred <- cbind(pred, c(0,4,8,12))
-
-colnames(pred) <- c("pred_value", "delta", "week")
-
-pred[pred$week == 12,]$delta <- pred[pred$week == 12,]$pred_value - pred[pred$week == 8,]$pred_value
-pred[pred$week == 8,]$delta <- pred[pred$week == 8,]$pred_value - pred[pred$week == 4,]$pred_value
-pred[pred$week == 4,]$delta <- pred[pred$week == 4,]$pred_value - pred[pred$week == 0,]$pred_value
-pred$pred_value
-
-pred_week12_avg <- sum(pred[pred$week >= 4,]$pred_value)/3
-week12_pred_change <- pred_week12_avg - week0
-```
-
-```{r}
-# Summary matrix
-summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
-rownames(summary.mat) <- assumedtargets$Name
-colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
-
+allrep <- get_rep_response_for_all("BLMM_gamma/ar1_rhs/no_holdout/")
 number_of_preds <- 0
 
-number_of_preds <- number_of_preds + 1
+amount_subjects <- length(levels(sysdimet$SUBJECT_ID))
 
-summary.mat[2,1:3] <- summary.mat[2,1:3] + as.numeric(sign(pred$delta[2:4]) == sign(sysdimet[sysdimet$SUBJECT_ID == holdout_subject,]$fsldl_delta[2:4]))
-summary.mat[2,4] <- summary.mat[2,4] + as.numeric(sign(week12_pred_change) == sign(week12_true_change))
+for (subject_number in 1:amount_subjects)
+{
+  number_of_preds <- number_of_preds + 1
+  
+  rep_response <- get_rep_response(allrep, subject_number)
+  true_response <- get_true_response(subject_number)
+  
+  rep_delta <- make_delta(rep_response)
+  true_delta <- make_delta(true_response)
+  
+  sign_matrix <- sign(rep_delta) == sign(true_delta)
+  avg_change <- sign(rowSums(true_response[,2:4])/3 - true_response[,1]) == sign(rowSums(rep_response[,2:4])/3 - rep_response[,1])
+  
+  summary.mat <- summary.mat + cbind(sign_matrix[,2:4]*1, avg_change*1)
+}
 
 summary.mat
 
+percent.mat <- summary.mat/number_of_preds * 100
+
+```
+
+
+```{r}
+# Summary matrix for non-shrinked model
+
+summary.mat2 <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
+rownames(summary.mat2) <- assumedtargets$Name
+colnames(summary.mat2) <- c('week 4', 'week 8', 'week 12', '12 week change')
+
+allrep_norhs <- get_rep_response_for_all("BLMM_gamma/ar1/")
+number_of_preds <- 0
+
+amount_subjects <- length(levels(sysdimet$SUBJECT_ID))
+
+for (subject_number in 1:amount_subjects)
+{
+  number_of_preds <- number_of_preds + 1
+  
+  rep_response <- get_rep_response(allrep_norhs, subject_number)
+  true_response <- get_true_response(subject_number)
+  
+  rep_delta <- make_delta(rep_response)
+  true_delta <- make_delta(true_response)
+  
+  sign_matrix <- sign(rep_delta) == sign(true_delta)
+  avg_change <- sign(rowSums(true_response[,2:4])/3 - true_response[,1]) == sign(rowSums(rep_response[,2:4])/3 - rep_response[,1])
+  
+  summary.mat2 <- summary.mat2 + cbind(sign_matrix[,2:4]*1, avg_change*1)
+}
+
+summary.mat2
+
+percent.mat2 <- summary.mat/number_of_preds * 100
 
 ```
 
 
 ## Model evaluation summary
 
-This visualization summarizes how accurately we can predict if blood test values raise or lower when the current level and a diet are known. 
+This visualization summarizes how accurately we can predict if blood test values raise or lower when the current level and a diet are known. This evaluates the model that uses shrinkage. TODO: 
+
 
 ```{r model_summary}
 
+kable(percent.mat) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
+
 ```
+
+This summarizes the non-shrinked model
+
+```{r model_summary_for_norhs}
+
+kable(percent.mat2) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+true_response <- sysdimet %>% 
+  filter(SUBJECT_ID == "S02") %>%
+  select(fshdl, WEEK)
+
+localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
+targetname <- "fshdl"
+target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
+
+pred<-as.data.frame(ms$summary[1:4,c(1)])
+pred <- cbind(pred, c(0,4,8,12))
+colnames(pred) <- c("pred_value", "week")
+
+ggplot() + 
+  geom_line(data=true_response, aes(x = WEEK, y = fshdl), color="green") +
+  geom_line(data=pred, aes(x = week, y = pred_value), color="orange") +
+  scale_x_discrete(limits=c(0,4,8,12))
+
+
+```
+
+
+
+```{r}
+localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
+targetname <- "fshdl"
+target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
+ms <- rstan::summary(target_blmm, pars=c("Y_rep"), probs=c(0.10, 0.90), na.rm = TRUE)
+
+pred<-as.data.frame(ms$summary[9:12,c(1)])
+pred <- cbind(pred, c(0,4,8,12))
+colnames(pred) <- c("pred_value", "week")
+
+true_response <- sysdimet %>% 
+  filter(SUBJECT_ID == "S06") %>%
+  select(fshdl, WEEK)
+
+ggplot() + 
+  geom_line(data=true_response, aes(x = WEEK, y = fshdl), color="green") +
+  geom_line(data=pred, aes(x = week, y = pred_value), color="orange") +
+  scale_x_discrete(limits=c(0,4,8,12))
+
+```
+
 
