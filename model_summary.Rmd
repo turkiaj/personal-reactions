@@ -1,5 +1,5 @@
 ---
-title: "Model summary"
+title: "Model evaluation"
 author: "Jari Turkia"
 date: "6/24/2019"
 output: html_document
@@ -122,6 +122,24 @@ make_delta <- function(true_response)
 }
 
 ```
+```{r}
+library(loo)
+target_blmm <- mebn.get_localfit("BLMM_gamma/ar1_rhs/no_holdout/fshdl")
+m1<-target_blmm
+
+m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
+m1_rel_n_eff <- relative_eff(exp(m1_loglik))
+m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4)
+m1_loo
+
+m2 <- mebn.get_localfit("BLMM_gamma/arr1/fshdl")
+m2_loglik <- extract_log_lik(m2, merge_chains = FALSE)
+m2_rel_n_eff <- relative_eff(exp(m2_loglik))
+m2_loo <- loo(m2_loglik, r_eff = m2_rel_n_eff, cores = 4)
+m2_loo
+
+#m1 elpd 240
+```
 
 
 ```{r}
@@ -131,7 +149,7 @@ summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
 rownames(summary.mat) <- assumedtargets$Name
 colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
 
-allrep <- get_rep_response_for_all("BLMM_gamma/ar1_rhs/no_holdout/")
+#allrep <- get_rep_response_for_all("BLMM_gamma/ar1_rhs/no_holdout/")
 number_of_preds <- 0
 
 amount_subjects <- length(levels(sysdimet$SUBJECT_ID))
@@ -189,7 +207,7 @@ for (subject_number in 1:amount_subjects)
 
 summary.mat2
 
-percent.mat2 <- summary.mat/number_of_preds * 100
+percent.mat2 <- summary.mat2/number_of_preds * 100
 
 ```
 
@@ -245,23 +263,32 @@ ggplot() +
 
 
 ```{r}
-localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
-targetname <- "fshdl"
-target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
-ms <- rstan::summary(target_blmm, pars=c("Y_rep"), probs=c(0.10, 0.90), na.rm = TRUE)
 
-pred<-as.data.frame(ms$summary[9:12,c(1)])
-pred <- cbind(pred, c(0,4,8,12))
-colnames(pred) <- c("pred_value", "week")
+bigplot <- ggplot() + scale_x_discrete(limits=c(0,4,8,12))
 
-true_response <- sysdimet %>% 
-  filter(SUBJECT_ID == "S06") %>%
-  select(fshdl, WEEK)
+#for (subject_number in 47:47)
+#{
 
-ggplot() + 
-  geom_line(data=true_response, aes(x = WEEK, y = fshdl), color="green") +
-  geom_line(data=pred, aes(x = week, y = pred_value), color="orange") +
-  scale_x_discrete(limits=c(0,4,8,12))
+subject_number <- 68
+
+  rep_response <- get_rep_response(allrep, subject_number)
+  true_response <- get_true_response(subject_number)
+  
+  rep.df <- as.data.frame(rep_response[targetname,])
+  rep.df$week <- c(0,4,8,12)  
+  colnames(rep.df) <- c("response", "week")
+
+  true.df <- as.data.frame(true_response[targetname,])
+  true.df$week <- c(0,4,8,12)  
+  colnames(true.df) <- c("response", "week")
+
+  bigplot <- bigplot + 
+    geom_line(data=true.df, aes(x = week, y = response), color="green") +
+    geom_line(data=rep.df, aes(x = week, y = response), color="orange") 
+#}
+
+bigplot
+
 
 ```
 

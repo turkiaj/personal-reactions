@@ -1,5 +1,5 @@
 ---
-title: "Revealing the Personal Effects of Nutrition with Mixed-Effect Bayesian Network"
+title: "Development file"
 author:
 - Jari Turkia, jari.turkia@cgi.com
 - University of Eastern Finland
@@ -123,16 +123,14 @@ sysdimet_normal <- mebn.bipartite_model(reaction_graph = initial_graph,
                                          stan_model_file = "mebn/BLMM_normal.stan",
                                          normalize_values = TRUE)
 
-write.graph(sysdimet_normal, "sysdimet_normal.graphml", "graphml")
-
 ```
 
-We can evaluate the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
+We can assess the model fit by plotting the posterior predictive distributions (PPC) over the distributions of the true blood test values. As expected, the Gaussian random variables are not fitting well.
 
 ```{r normal_model_ppc, fig.height = 4, fig.width = 4, fig.align = "center", echo=FALSE, eval=TRUE, message=FALSE, cache=FALSE}
 # Here a PPC plot of blood insulin illustrates the problem with fitting Normal distribution to biometric data that is positive and many times right skewed. 
+
 normal_targets <- assumedtargets[assumedtargets$Name=="fshdl",]
-normal_targets <- assumedtargets
 normal_targets$ScaleMin <- -10
 normal_targets$ScaleMax <- 25
 
@@ -156,8 +154,6 @@ sysdimet_gamma <- mebn.bipartite_model(reaction_graph = initial_gamma_graph,
                                    local_model_cache = "models/BLMM_gamma/identity", 
                                    stan_model_file = "mebn/BLMM_gamma_hierarchical.stan",
                                    normalize_values = TRUE)
-
-write.graph(sysdimet_gamma, "sysdimet_gamma.graphml", "graphml")
 ```
 
 The visual comparison of the true and estimated distributions of blood test variables shows that Gamma distribution follows the true distributions quite well. The estimate has lots of variance and we should focus on that next.
@@ -169,16 +165,9 @@ mebn.target_dens_overlays("BLMM_gamma/identity/", assumedtargets, sysdimet)
 
 ```{r effect_comparison, eval=FALSE, echo=FALSE}
 #As we see here, the regression coefficients are approximately the same for both Normal and Gamma models, but the confidence is better for the Gamma model 
-source("mebn/MEBN.r")
-
-sysdimet_normal <- read_graph("sysdimet_normal.graphml", "graphml")
-sysdimet_gamma <- read_graph("sysdimet_gamma.graphml", "graphml")
 
 beta_coefs <- mebn.compare_typicals(sysdimet_normal, sysdimet_gamma)
-
-kable(beta_coefs, caption = "Comparison of beta coefficients between Normal and Gamma models") %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
-  row_spec(0,bold=TRUE)
+head(beta_coefs)
 ```
 
 **Graph probability approximation with LOO**
@@ -206,11 +195,19 @@ The model with highest expected log predictive density (ELPD) will have the high
 
 In the dataset the observations from patients' food diaries and blood tests have one week response time. This might not be optimal time for all the responses and the successive observations might be correlated. For modeling the correlated residuals, we add an autocorrelation structure to the model. As there are only four observations from each patient, we consider only one previous residual for each observation.
 
-In Stan model this AR(1) structure of correlated observations is calculated simply as 
+In Stan model this AR(1) structure of correlated residuals is calculated as follows
 
 ```
-mu[n] += Y[n-1] * ar1
-```      
+...
+    // - calculate residuals     
+    e[n] = Y[n] - mu[n]; 
+
+    // - estimate autoregression coefficient for observations of one patient 
+    if (group_size > 1)
+      mu[n] += e[n-1] * ar1;
+      
+...      
+```
 
 ```{r graph_with_gamma_ar1, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
@@ -258,6 +255,39 @@ kable(ar1_comparison) %>%
   row_spec(0,bold=TRUE)
 ```
 
+Besides correlated residuals, we can also model the correlation between observations
+
+```{r graph_with_gamma_ar1, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_arr1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/arr1", 
+                                   stan_model_file = "mebn/BLMM_gamma_arr1.stan",
+                                   normalize_values = TRUE)
+
+mebn.write_gexf(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.gexf")
+write_graph(sysdimet_gamma_ar1, "sysdimet_gamma_arr1.graphml", "graphml")
+
+```
+
+
+Numerically the difference is also significant between models with AR(0) and AR(1)
+
+```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=TRUE}
+arr1_vs_ar1 <- mebn.LOO_comparison(temptarget, "BLMM_gamma/arr1", "BLMM_gamma/ar1")
+
+```
+```{r ar0_ar1_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
+kable(arr1_vs_ar1) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
+  row_spec(0,bold=TRUE)
+```
+
+
 Comparison summary of all the models with joint and marginal LOO
 
 ```{r}
@@ -294,6 +324,46 @@ kable(loo_table, booktabs = T, caption = "Comparison of the LOO-PSIS approximati
 ```
 
 All the estimations of LOO-PSIS include excessive percentage of bad Pareto k values, indicating that the LOO-PSIS approximation of the predictive performance cannot be trusted. This might be the hierarchy in data or high variance. As advised by Vehtari et al., an exact k-fold cross-validation should be conducted for the model.
+
+# Testing RHS model without holdout
+
+```{r gamma_rhs_arr1_model, echo=TRUE, message=FALSE}
+# no holdout
+holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
+
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
+
+```{r graph_with_gamma_rhs_arr1, echo=FALSE, eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_arr1 <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   targetdata = holdout_index,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = "models/BLMM_gamma/rhs_arr1", 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   reg_params = shrinkage_parameters,
+                                   normalize_values = TRUE)
+
+write_graph(sysdimet_gamma_arr1, "sysdimet_gamma_arr1.graphml", "graphml")
+
+```
+
+```{r gamma_ar1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/rhs_arr1/", assumedtargets, sysdimet)
+```
 
 #Typical effects of nutrition, and variance from the typical effects
 
@@ -410,6 +480,8 @@ personal_effects <- matrix(NA, ncol=length(feature_index)*nrow(assumedtargets), 
 modelcache <- "BLMM_gamma/ar1/"
 
 # We could fetch a personal graph for all patients, but it is more effective to extract estimations directly from MCMC-samples to data frames
+# TODO: use mebn.personal_effects. Do we need CIs here?
+
 
 for (i in c(1:nrow(assumedtargets)))
 {
@@ -548,6 +620,15 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 ```
 
 By looking at the absolute effect of the cholesterol medication it seems that there separetes two groups where one it is a significant factor in explaining blood insulin level, and other group where it does not play virtually any role. But does these patients even take cholesterol medications? Let's create a cross tabulation of observations to explore this effect more closely.
+
+```{r, eval=FALSE}
+library(factoextra)
+#https://uc-r.github.io/kmeans_clustering
+
+fviz_cluster(km, data = personal_effects)
+
+```
+
 
 ```{r cholmed_crosstab, echo=FALSE}
 
@@ -694,6 +775,12 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 ```
 
 
+```{r, eval=FALSE}
+library(factoextra)
+fviz_cluster(km, data = personal_effects)
+```
+
+
 ```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=8, fig.height=8}
 
 # Number of cluster centers 
@@ -788,11 +875,18 @@ holdout_index[holdout_index == FALSE] <- 0
 
 
 ```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-holdout_number <- 7
-holdout_subject <- sprintf("S%02d", holdout_number)
+subjects <- levels(sysdimet$SUBJECT_ID)
+holdout_subject_index <- 1
 
-holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
+holdout_index <- as.vector(sysdimet$SUBJECT_ID)
+
+holdout_index[holdout_index == "S01"] <- 1
+holdout_index[holdout_index != "S01"] 
+
+holdout_index <- c(0,0,0,0,1,1,1,1, rep(0,length(sysdimet$SUBJECT_ID)-8))
+#holdout_index <- rep(0,length(sysdimet$SUBJECT_ID))
 holdout_index
+
 ```
 
 The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
@@ -823,12 +917,12 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/7"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/2"), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_7.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_02.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
