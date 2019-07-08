@@ -38,6 +38,13 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
+```{r, typical_effects_figure, fig.height = 8, fig.width = 10, echo=FALSE, fig.align = "center", message=FALSE, warning=FALSE, cache=FALSE}
+source("mebn/MEBN.r")
+require(igraph)
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
+graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
+```
+
 ```{r}
 library(dplyr)
 library(tidyr)

@@ -1081,7 +1081,11 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects, graph_layout 
        vertex.label.cex=1,
        vertex.label.dist=4,
        edge.arrow.size=0.5,
-       edge.arrow.width=1)
+       edge.arrow.width=1,
+       axes=FALSE) 
+  
+  axis(1, at = -1:1, labels=c("Nutrients", "Processes and organs", "Personal goals"))
+  #axis(1, at = 1:4)
   
   return(graph_layout)
 }
