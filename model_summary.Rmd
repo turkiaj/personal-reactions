@@ -46,6 +46,17 @@ graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
 ```
 
 ```{r}
+#install.packages("shinystan")
+library(bayesplot)
+
+m <- shinystan::eight_schools@posterior_sample
+
+mcmc_areas_ridges(m, pars = "mu", regex_pars = "theta") +
+  ggplot2::ggtitle("Effects that are either typically significant or have high variance between persons")
+```
+
+
+```{r}
 library(dplyr)
 library(tidyr)
 library(kableExtra)
