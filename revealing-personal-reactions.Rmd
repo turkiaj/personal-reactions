@@ -206,7 +206,7 @@ The model with highest expected log predictive density (ELPD) will have the high
 
 In the dataset the observations from patients' food diaries and blood tests have one week response time. This might not be optimal time for all the responses and the successive observations might be correlated. For modeling the correlated residuals, we add an autocorrelation structure to the model. As there are only four observations from each patient, we consider only one previous residual for each observation.
 
-In Stan model this AR(1) structure of correlated observations is calculated simply as 
+In Stan model this AR(1) structure of correlated observations is calculated simply with 
 
 ```
 mu[n] += Y[n-1] * ar1
@@ -301,35 +301,52 @@ We have now reached a reasonable good fit for the local distributions of the Bay
 
 ```{r, echo=FALSE, message=FALSE, eval=TRUE}
 library(igraph)
+library(dplyr)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
 
-# Query the graph for personal variances, denoted by b_sigma-nodes
+# Query the graph for typical strengths of the effects
 allnodes <- V(sysdimet_gamma_ar1)
 beta <- allnodes[allnodes$type=="beta"]
+b_sigma <- allnodes[allnodes$type=="b_sigma"]
 
 # Again, a separate data frame is constructed for printing
 typical_effects<-data.frame(matrix(NA, nrow=length(beta), ncol=0))
 
-typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+# HTML
+#typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) #paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
 
-typical_effects$strength <- beta$value 
-typical_effects$"CI-10%" <- beta$value_lCI
-typical_effects$"CI-90%" <- beta$value_uCI
+# Latex
+typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) paste0("$\\text{", toString(datadesc[datadesc$Name==x[1],]$Description),"}$ $\\rightarrow$ $\\text{", toString(datadesc[datadesc$Name==x[2],]$Description), "}$")))
 
-ordered_typical_effects <- typical_effects[order(-typical_effects$strength),]
+typical_effects$target <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) toString(datadesc[datadesc$Name==x[2],]$Description)))
+
+typical_effects$strength <- round(beta$value, digits = 2)
+typical_effects$effect_CI <- paste0("$\\text{[",round(beta$value_lCI, digits = 2),";", round(beta$value_uCI, digits = 2),"]}$")
+
+typical_effects$variance <- round(b_sigma$value, digits = 2) 
+typical_effects$variance_CI <- paste0("$\\text{[",round(b_sigma$value_lCI, digits = 2),";", round(b_sigma$value_uCI, digits = 2),"]}$")
+
+ordered_typical_effects <- typical_effects %>%
+  group_by(target) %>%
+  filter(abs(strength) > 0.1 | variance > 0.1) %>%
+  ungroup(target) %>%
+  select(-target)
+
 row.names(ordered_typical_effects) <- NULL
+
 ```
 
 ```{r typical_effects_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
-kable(head(ordered_typical_effects, 15), format = "html", caption = "Typically most significant effects of nutrition in Sysdimet study") %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE) %>%
+kable(ordered_typical_effects, format = "html", , col.names = c("Effect", "Typical strength", "90% CI", "Variance between patients", "90% CI"), caption = "Typically or personally most significant effects of nutrition in Sysdimet study") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
   row_spec(0,bold=TRUE)  
 ```
 
 ```{r typical_effects_table_latex, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
-#kable(head(ordered_typical_effects, 15), format = "latex", caption = "Typically most significant effects of nutrition in Sysdimet study") %>%
-#  kable_styling(latex_options = c("striped", "condensed"), full_width = FALSE) %>%
-#  row_spec(0,bold=TRUE) }
+kable(ordered_typical_effects, col.names = c("Effect", "Strength", "90% CI", "Variance", "90% CI"),
+      format = "latex", escape = FALSE, caption = "Typically or personally most significant effects of nutrition in the Sysdimet study") %>%
+  kable_styling(latex_options = c("striped", "condensed"), full_width = FALSE) %>%
+  row_spec(0,bold=TRUE) 
 ```
 
 
