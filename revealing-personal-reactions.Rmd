@@ -313,18 +313,22 @@ b_sigma <- allnodes[allnodes$type=="b_sigma"]
 typical_effects<-data.frame(matrix(NA, nrow=length(beta), ncol=0))
 
 # HTML
-#typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) #paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
+typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) paste0(toString(datadesc[datadesc$Name==x[1],]$Description)," -> ", toString(datadesc[datadesc$Name==x[2],]$Description))))
 
 # Latex
-typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) paste0("$\\text{", toString(datadesc[datadesc$Name==x[1],]$Description),"}$ $\\rightarrow$ $\\text{", toString(datadesc[datadesc$Name==x[2],]$Description), "}$")))
+#typical_effects$effect <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) paste0("$\\text{", toString(datadesc[datadesc$Name==x[1],]$Description),"}$ $\\rightarrow$ $\\text{", toString(datadesc[datadesc$Name==x[2],]$Description), "}$")))
 
 typical_effects$target <- unlist(lapply(strsplit(gsub("beta_","", beta$name), "_"), function(x) toString(datadesc[datadesc$Name==x[2],]$Description)))
 
 typical_effects$strength <- round(beta$value, digits = 2)
 typical_effects$effect_CI <- paste0("$\\text{[",round(beta$value_lCI, digits = 2),";", round(beta$value_uCI, digits = 2),"]}$")
+typical_effects$effect_lCI <- beta$value_lCI
+typical_effects$effect_uCI <- beta$value_uCI
 
 typical_effects$variance <- round(b_sigma$value, digits = 2) 
 typical_effects$variance_CI <- paste0("$\\text{[",round(b_sigma$value_lCI, digits = 2),";", round(b_sigma$value_uCI, digits = 2),"]}$")
+typical_effects$variance_lCI <- b_sigma$value_lCI
+typical_effects$variance_uCI <- b_sigma$value_uCI
 
 ordered_typical_effects <- typical_effects %>%
   group_by(target) %>%
@@ -348,6 +352,43 @@ kable(ordered_typical_effects, col.names = c("Effect", "Strength", "90% CI", "Va
   kable_styling(latex_options = c("striped", "condensed"), full_width = FALSE) %>%
   row_spec(0,bold=TRUE) 
 ```
+
+Plot of typical and high varying effects
+
+```{r,  fig.height = 8, fig.width = 10}
+
+library(ggplot2)
+library(gridExtra)
+
+ordered_typical_effects <- ordered_typical_effects %>%
+  arrange(variance)
+
+# Plot for typical effect
+
+p1 <- ggplot(ordered_typical_effects, aes(x=effect, y=strength)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=effect_lCI, ymax=effect_uCI), width=.2,
+                 position=position_dodge(.9)) +
+  scale_x_discrete(limits=ordered_typical_effects$effect) +
+  coord_flip()
+
+# Plot for between group effect variance
+
+p2 <- ggplot(ordered_typical_effects, aes(x=effect, y=variance)) + 
+  geom_point(shape=21, size=3, fill="white", stat="identity") +
+  geom_errorbar(aes(ymin=variance_lCI, ymax=variance_uCI), width=.2,
+                 position=position_dodge(.9)) +
+  scale_x_discrete(limits=ordered_typical_effects$effect) +
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) +
+  coord_flip()  
+
+grid.arrange(p1, p2, nrow = 1)
+
+```
+
 
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
