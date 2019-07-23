@@ -287,10 +287,11 @@ We have now reached a reasonable good fit for the local distributions of the Bay
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows mean of posterior for typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
-```{r, typical_effects_figure, fig.height = 8, fig.width = 10, echo=FALSE, fig.align = "center", message=FALSE, warning=FALSE, cache=TRUE}
+```{r, typical_effects_figure, fig.height = 6, fig.width = 8, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 require(igraph)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
+#sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs.graphml", "graphml")
 graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
 ```
 
@@ -327,7 +328,7 @@ typical_effects$variance_uCI <- b_sigma$value_uCI
 
 ordered_typical_effects <- typical_effects %>%
   group_by(target) %>%
-  filter(abs(strength) > 0.1 | variance > 0.1) %>%
+  filter(abs(strength) > 0.3 | variance > 0.3) %>%
   ungroup(target) %>%
   select(-target)
 
@@ -335,22 +336,22 @@ row.names(ordered_typical_effects) <- NULL
 
 ```
 
-```{r typical_effects_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
+```{r typical_effects_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=FALSE}
 kable(ordered_typical_effects, format = "html", , col.names = c("Effect", "Typical strength", "90% CI", "Variance between patients", "90% CI"), caption = "Typically or personally most significant effects of nutrition in Sysdimet study") %>%
   kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
   row_spec(0,bold=TRUE)  
 ```
 
-```{r typical_effects_table_latex, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE}
+```{r typical_effects_table_latex, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=FALSE}
 kable(ordered_typical_effects, col.names = c("Effect", "Strength", "90% CI", "Variance", "90% CI"),
       format = "latex", escape = FALSE, caption = "Typically or personally most significant effects of nutrition in the Sysdimet study") %>%
   kable_styling(latex_options = c("striped", "condensed"), full_width = FALSE) %>%
   row_spec(0,bold=TRUE) 
 ```
 
-Plot of typical and high varying effects
+We can examine closer the effects in the previous graph. In following, we show 90% credible interval for each effect and sort them by variance between persons. These effects with high variance between persons are intresting to us.
 
-```{r,  fig.height = 8, fig.width = 10}
+```{r high_varying_effects,  fig.height = 6, fig.width = 8}
 
 library(ggplot2)
 library(gridExtra)
@@ -361,11 +362,15 @@ ordered_typical_effects <- ordered_typical_effects %>%
 # Plot for typical effect
 
 p1 <- ggplot(ordered_typical_effects, aes(x=effect, y=strength)) + 
-  geom_bar(stat="identity", color="black", 
+  geom_bar(stat="identity", color="black", fill="#AAAAAA", 
            position=position_dodge()) +
   geom_errorbar(aes(ymin=effect_lCI, ymax=effect_uCI), width=.2,
                  position=position_dodge(.9)) +
   scale_x_discrete(limits=ordered_typical_effects$effect) +
+  theme(axis.title.y=element_blank(), 
+        axis.text.y=element_text(size=9),
+        axis.title.x=element_text(size=9)) +
+  labs(y="typical strength") +
   coord_flip()
 
 # Plot for between group effect variance
@@ -377,7 +382,9 @@ p2 <- ggplot(ordered_typical_effects, aes(x=effect, y=variance)) +
   scale_x_discrete(limits=ordered_typical_effects$effect) +
   theme(axis.title.y=element_blank(),
         axis.text.y=element_blank(),
-        axis.ticks.y=element_blank()) +
+        axis.ticks.y=element_blank(),
+        axis.title.x=element_text(size=9)) +
+  labs(y="variance between patients") +
   coord_flip()  
 
 grid.arrange(p1, p2, nrow = 1)
@@ -523,7 +530,7 @@ Cholesterol medication seems to dominate the clusters. There are patients for wh
 
 Let's see how the clustering shows with absolute effects rather than difference from mean. Note that these are not the greatest effects, but those with most personal variance.
 
-```{r variation clusters2, echo=FALSE, eval=TRUE, fig.width=6, fig.height=7, cache=TRUE}
+```{r personal_effect_clusters_all, echo=FALSE, eval=TRUE, fig.width=6, fig.height=7, cache=TRUE}
 source("mebn/MEBN.r")
 
 # Number of cluster centers 
@@ -583,25 +590,6 @@ kable(df) %>%
 ```
 
 There are 9 (=36/4) and 7 (=28/4) patients in clusters 2 and 4 who are taking cholesterol medication. For patients in the cluster 4 the average insulin level is  the medication seems to rise the insulin level quite much, but for patients in the cluster 2 not much at all. 
-
-Let's try to confirm this finding by visualizing the components of insulin variance.
-
-```{r insuling_componentes_plot, echo=FALSE, eval=TRUE, fig.width=8, fig.height=5, cache=TRUE}
-source("mebn/MEBN.r")
-
-# get indexes of personal effects for fsins in variations_data vector
-fsins_index <- match("fsins", assumedtargets$Name)
-fsins_components_idx <- seq(nrow(assumedpredictors)*fsins_index,nrow(assumedpredictors)*(fsins_index+1)-1)
-
-feature_index <- c(1:nrow(assumedpredictors))
-cluster_index <- c(2,4)
-
-fsins_clusters <- variations_data[fsins_components_idx,cluster_index]
-
-# plot the effects of all nutrients for clusters fsins
-mebn.plot_clusters(fsins_clusters, cluster_index, assumedpredictors, assumedtargets[assumedtargets$Name=="fsins",], NULL, feature_index, sort_by_amount = TRUE)
-```
-So, based on this we have an evidence that there is group on patients in this dataset who has significantly larger blood insulin values on average and a major component affecting the raise is cholesterol medication.
 
 **Clustering with nutritional effects only**
 
@@ -695,7 +683,7 @@ mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtar
 ```
 
 
-```{r variation clusters, echo=FALSE, eval=TRUE, fig.width=6, fig.height=7}
+```{r personal_effect_clusters_nutrients, echo=FALSE, eval=TRUE, fig.width=6, fig.height=7}
 
 # Number of cluster centers 
 k <- 4
@@ -711,27 +699,13 @@ observations_per_patient <- 4
 sysdimet$effect_group <- unlist(lapply(km$cluster,rep,observations_per_patient)) 
 
 # Plot the clusters
-variations_data <- as.data.frame(t(km$centers))
+cluster_data <- as.data.frame(t(km$centers))
 cluster_index <- seq(1:k)
 #mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, NULL, feature_index)
-mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
+mebn.plot_clusters(cluster_data, cluster_index, assumedpredictors, assumedtargets, effects_with_most_variance, feature_index)
 #mebn.plot_clusters(variations_data, cluster_index, assumedpredictors, assumedtargets, largest_personal_effects, feature_index)
 
 ```
-
-```{r, eval=FALSE}
-library(factoextra)
-fviz_cluster(km, data = personal_effects)
-
-# patients 1 and 7 seem to be in different clusters and far away from each other
-sysdimet[sysdimet$SUBJECT_ID=="S01",]$effect_group # 2
-sysdimet[sysdimet$SUBJECT_ID=="S07",]$effect_group # 4
-
-# effect_groupit eivät vastaa fvizin klustereiden numeroita??
-
-```
-
-
 In clusters 1 and 2 there are patients whose blood insulin levels react on lower and on higher than average. One interesting difference is lignin's effect to the blood insulin.
 
 #Predicting the personal reaction type for new patients
@@ -825,92 +799,23 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/7"), 
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/no_holdout"), 
                                    stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "subject_7.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs.graphml", "graphml")
 ```
 
 ```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
 #t<-assumedtargets[assumedtargets$Name=="fsins",]
 #source("mebn/MEBN.r")
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==0,])
+#mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==0,])
 ```
 
 ```{r gamma_arr1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
-temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
-mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", temptarget, sysdimet[sysdimet$SUBJECT_ID!='S02',])
-```
-
-
-```{r}
-# Compare true and predicted values for holdout person
-
-source("mebn/MEBN.r")
-target_variables<-assumedtargets[assumedtargets$Name=="fsldl",]
-
-mebn.evaluate_predictions("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==1,])
-
-# Add delta from previous measurement
-
-sysdimet$fsldl_delta <- 0
-
-sysdimet[sysdimet$WEEK == 12,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 12,]$fsldl - sysdimet[sysdimet$WEEK == 8,]$fsldl
-sysdimet[sysdimet$WEEK == 8,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 8,]$fsldl - sysdimet[sysdimet$WEEK == 4,]$fsldl
-sysdimet[sysdimet$WEEK == 4,]$fsldl_delta <- sysdimet[sysdimet$WEEK == 4,]$fsldl - sysdimet[sysdimet$WEEK == 0,]$fsldl
-
-# true delta
-sysdimet[sysdimet$SUBJECT_ID == 'S02',]$fsldl_delta
-sysdimet[sysdimet$SUBJECT_ID == 'S02',]$fsldl
-
-week0 <- sysdimet[sysdimet$SUBJECT_ID == 'S02' & sysdimet$WEEK == 0,]$fsldl
-week12_avg <- sum(sysdimet[sysdimet$SUBJECT_ID == 'S02' & sysdimet$WEEK >= 4,]$fsldl)/3
-
-week12_avg - week0
-```
-
-```{r}
-# predicted delta
-targetname <- "fsldl"    
-localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
-target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
-ms <- rstan::summary(target_blmm, pars=c("Y_pred"), probs=c(0.10, 0.90), na.rm = TRUE)
-
-pred<-as.data.frame(ms$summary[1:4,1])
-pred$delta<-0
-pred <- cbind(pred, c(0,4,8,12))
-colnames(pred) <- c("pred_value", "delta", "week")
-
-pred[pred$week == 12,]$delta <- pred[pred$week == 12,]$pred_value - pred[pred$week == 8,]$pred_value
-pred[pred$week == 8,]$delta <- pred[pred$week == 8,]$pred_value - pred[pred$week == 4,]$pred_value
-pred[pred$week == 4,]$delta <- pred[pred$week == 4,]$pred_value - pred[pred$week == 0,]$pred_value
-pred$pred_value
-
-pred_week12_avg <- sum(pred[pred$week >= 4,]$pred_value)/3
-pred_week12_avg - week0
-```
-
-
-```{r}
-targetname <- "fsldl"    
-localfit_directory <- "BLMM_gamma/ar1_rhs/2/"
-dataset <- sysdimet[sysdimet$SUBJECT_ID == 'S06',]
-
-    target_blmm <- mebn.get_localfit(paste0(localfit_directory,targetname))
-    true_value <- as.vector(dataset[,targetname])
-
-    draws <- as.matrix(target_blmm)
-    obs <- length(true_value)
-
-    p1 <- match("Y_rep[9]",colnames(draws))
-    p2 <- match(paste0("Y_rep[", 9+obs-1, "]"),colnames(draws))
-    
-    # https://mc-stan.org/bayesplot/reference/MCMC-recover.html
-    rec_plot <- mcmc_recover_hist(draws[, p1:p2], true_value[1:obs])
-    rec_plot
-    
+#temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
+#mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", temptarget, sysdimet[sysdimet$SUBJECT_ID!='S02',])
 ```
 
 
@@ -930,8 +835,7 @@ personal_graph_S02 <- mebn.personal_graph(person_id = 2,
 write.graph(personal_graph_S02, "subject_02.graphml", "graphml")
 ```
 
-
-```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu11, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph_S02 <- read.graph("subject_02.graphml", "graphml")
@@ -945,7 +849,7 @@ person_id2 <- tail(holdout_persons,1)
 
 ```
 
-```{r personal_graph1, echo=FALSE, eval=FALSE}
+```{r personal_graph2, echo=FALSE, eval=FALSE}
 # set eval=FALSE if you need to need to upd
 source("mebn/MEBN.r")
 
@@ -961,7 +865,7 @@ personal_graph1 <- mebn.personal_graph(person_id = person_id1,
 write.graph(personal_graph1, "personal_graph1.graphml", "graphml")
 ```
 
-```{r personal_graph2, echo=FALSE, eval=FALSE}
+```{r personal_graph3, echo=FALSE, eval=FALSE}
 source("mebn/MEBN.r")
 
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
@@ -987,7 +891,7 @@ layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 
 **Subject 37**
 
-```{r personal_graphvisu2, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu22, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")

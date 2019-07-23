@@ -1071,6 +1071,7 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects, graph_layout 
   # Color and size encoding for edges according to beta coefficient
   E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
   E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  #E(visual_graph)[E(visual_graph)$weight < 0]$lty="dashed"
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
 
   plot(visual_graph, 
@@ -1078,7 +1079,7 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects, graph_layout 
        rescale=TRUE,
        vertex.label.family="Helvetica",
        vertex.label.color="black",
-       vertex.label.cex=1,
+       vertex.label.cex=0.8,
        vertex.label.dist=4,
        edge.arrow.size=0.5,
        edge.arrow.width=1,
