@@ -287,7 +287,7 @@ We have now reached a reasonable good fit for the local distributions of the Bay
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows mean of posterior for typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
-```{r, typical_effects_figure, fig.height = 6, fig.width = 8, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
+```{r, typical_effects_figure, fig.height = 6, fig.width = 6.7, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 require(igraph)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
@@ -336,22 +336,9 @@ row.names(ordered_typical_effects) <- NULL
 
 ```
 
-```{r typical_effects_table, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=FALSE}
-kable(ordered_typical_effects, format = "html", , col.names = c("Effect", "Typical strength", "90% CI", "Variance between patients", "90% CI"), caption = "Typically or personally most significant effects of nutrition in Sysdimet study") %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
-  row_spec(0,bold=TRUE)  
-```
-
-```{r typical_effects_table_latex, message=FALSE, warning=FALSE, cache=TRUE, echo=FALSE, eval=FALSE}
-kable(ordered_typical_effects, col.names = c("Effect", "Strength", "90% CI", "Variance", "90% CI"),
-      format = "latex", escape = FALSE, caption = "Typically or personally most significant effects of nutrition in the Sysdimet study") %>%
-  kable_styling(latex_options = c("striped", "condensed"), full_width = FALSE) %>%
-  row_spec(0,bold=TRUE) 
-```
-
 We can examine closer the effects in the previous graph. In following, we show 90% credible interval for each effect and sort them by variance between persons. These effects with high variance between persons are intresting to us.
 
-```{r high_varying_effects,  fig.height = 6, fig.width = 8}
+```{r high_varying_effects,  fig.height = 6, fig.width = 6, fig.align="left"}
 
 library(ggplot2)
 library(gridExtra)
@@ -359,14 +346,17 @@ library(gridExtra)
 ordered_typical_effects <- ordered_typical_effects %>%
   arrange(variance)
 
+ordered_typical_effects$lowers_rises <- ifelse(ordered_typical_effects$strength < 0, "lowers", "raises")
+
 # Plot for typical effect
 
 p1 <- ggplot(ordered_typical_effects, aes(x=effect, y=strength)) + 
-  geom_bar(stat="identity", color="black", fill="#AAAAAA", 
-           position=position_dodge()) +
+  geom_bar(stat="identity", color="black", aes(fill=lowers_rises), 
+           position=position_dodge(), show.legend = FALSE) +
   geom_errorbar(aes(ymin=effect_lCI, ymax=effect_uCI), width=.2,
                  position=position_dodge(.9)) +
   scale_x_discrete(limits=ordered_typical_effects$effect) +
+  scale_fill_manual(values = c("#DDDDDD", "#888888")) +
   theme(axis.title.y=element_blank(), 
         axis.text.y=element_text(size=9),
         axis.title.x=element_text(size=9)) +
@@ -387,7 +377,7 @@ p2 <- ggplot(ordered_typical_effects, aes(x=effect, y=variance)) +
   labs(y="variance between patients") +
   coord_flip()  
 
-grid.arrange(p1, p2, nrow = 1)
+grid.arrange(p1, p2, nrow = 1, widths=c(2,1), padding=0)
 
 ```
 
@@ -882,7 +872,7 @@ We can then compare the visualizations of the personal reaction graphs. The effe
 
 **Subject 94**
 
-```{r personal_graphvisu1, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu1, eval=TRUE, fig.height = 6, fig.width = 6.7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
@@ -891,11 +881,11 @@ layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 
 **Subject 37**
 
-```{r personal_graphvisu22, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu22, eval=TRUE, fig.height = 6, fig.width = 6.7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
-layout <- mebn.plot_personal_effects(personal_graph2, 15, graph_layout)
+layout <- mebn.plot_personal_effects(personal_graph2, 20, graph_layout)
 ```
 
 The graph visualizations show only the means of the effect magnitudes. We can also go deeper and inspect the posterior predictive distributions of the effects. Here are the effects of cholesterol medication and lignin to the blood insulin. The outline of the plot shows 95% credible interval and the dark band shows 50% credible interval. 

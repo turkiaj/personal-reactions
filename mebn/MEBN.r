@@ -1069,17 +1069,16 @@ mebn.plot_typical_effects <- function(reaction_graph, top_effects, graph_layout 
   V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
   # Color and size encoding for edges according to beta coefficient
-  E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
-  E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  E(visual_graph)[E(visual_graph)$weight > 0]$color="#D01C1F"
+  E(visual_graph)[E(visual_graph)$weight < 0]$color="#4B878B"
   #E(visual_graph)[E(visual_graph)$weight < 0]$lty="dashed"
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
 
   plot(visual_graph, 
        layout=graph_layout, 
        rescale=TRUE,
-       vertex.label.family="Helvetica",
        vertex.label.color="black",
-       vertex.label.cex=0.8,
+       vertex.label.cex=0.7,
        vertex.label.dist=4,
        edge.arrow.size=0.5,
        edge.arrow.width=1,
@@ -1148,16 +1147,15 @@ mebn.plot_personal_effects <- function(personal_graph, top_effects, graph_layout
   V(visual_graph)[V(visual_graph)$type == "200"]$label.degree = 0 # right side
   
   # Color and size encoding for edges according to beta + b coefficients
-  E(visual_graph)[E(visual_graph)$weight > 0]$color="red"
-  E(visual_graph)[E(visual_graph)$weight < 0]$color="blue"
+  E(visual_graph)[E(visual_graph)$weight > 0]$color="#D01C1F"
+  E(visual_graph)[E(visual_graph)$weight < 0]$color="#4B878B"
   E(visual_graph)$width = abs(E(visual_graph)$weight) * 6
   
   plot(visual_graph, 
        layout=graph_layout, 
        rescale=TRUE,
-       vertex.label.family="Helvetica",
        vertex.label.color="black",
-       vertex.label.cex=1,
+       vertex.label.cex=0.7,
        vertex.label.dist=4,
        edge.arrow.size=0.5,
        edge.arrow.width=1,
@@ -1213,7 +1211,6 @@ mebn.plot_personal_variations <- function(reaction_graph, top_effects)
   plot(visual_graph, 
        layout=bipa_layout, 
        rescale=TRUE,
-       vertex.label.family="Helvetica",
        vertex.label.color="black",
        vertex.label.cex=1,
        vertex.label.dist=4,
@@ -1265,14 +1262,16 @@ mebn.plot_clusters <- function(cluster_data, clusters_index, assumedpredictors, 
   if (sort_by_amount == TRUE) {
     ggplot(plot_data, aes(x=reorder(effect, amount), y=amount)) + 
       geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
+      scale_fill_manual(values = c("#333333", "#999999")) +
       coord_flip() +
-      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(), text=element_text(size=9)) +
       facet_wrap(~cluster)
   } else {  
     ggplot(plot_data, aes(x=reorder(effect, amount), y=amount)) + 
       geom_bar(stat='identity', aes(fill=below_above), width=.5, show.legend = FALSE) +
+      scale_fill_manual(values = c("#333333", "#999999")) +
       coord_flip() +
-      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(), text=element_text(size=9)) +
       facet_wrap(~cluster)
   }  
 }
