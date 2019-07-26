@@ -221,7 +221,7 @@ The autocorrelation structure seems to decrease the variance of the model
 mebn.target_dens_overlays("BLMM_gamma/ar1/", assumedtargets, sysdimet)
 ```
 
-Numerically the difference is also significant between models with AR(0) and AR(1)
+Expected predictive performance (ELPD) is also higher for AR(1) model
 
 ```{r gamma_ar1_loo, message=FALSE, warning=FALSE, cache=TRUE, echo=TRUE}
 ar0_vs_ar1 <- mebn.LOO_comparison(assumedtargets, "BLMM_gamma/identity", "BLMM_gamma/ar1")
@@ -244,50 +244,147 @@ kable(ar1_comparison) %>%
   row_spec(0,bold=TRUE)
 ```
 
-Comparison summary of all the models with joint and marginal LOO
+All the estimations of LOO-PSIS include excessive percentage of bad Pareto k values, indicating that the LOO-PSIS approximation of the predictive performance cannot be fully trusted. This might be the hierarchy in data or high variance. As advised by Vehtari et al., an exact k-fold cross-validation should be conducted for the model.
+
+# Cross-validation with skrinkage prior model
+
+In our analysis, we use two models: 1) typical effects are better shown with previous model that has vague prior on beta coefficients, and 2) personal effects became clearer in a model that uses shrinkage prior on beta coefficients. This shrinkaged model is also faster to evaluate in k-fold setting and is possibly better predictor.
+
+The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting of non-shrinked model, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
+
+```{r shrinkage_parameters, echo=TRUE, message=FALSE}
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 0.01825   # scale for the half-t prior for tau: 
+                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
+
+Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
 
 ```{r}
-source("mebn/MEBN.r")
-N <- nrow(sysdimet)
-comp <- mebn.LOO_comparison3(assumedtargets, "BLMM_normal", "BLMM_gamma/identity", "BLMM_gamma/ar1", N)
-comp_sum <- rbind(comp, c(0, sum(comp[,2]), sum(comp[,4]), sum(comp[,6])))
+# One RHS model with all data (no_holdout)
+holdout_index <- NULL
+```
 
-comp_round <- round(as.matrix(comp_sum[,2:7]), 2)
-distribution <- c(comp[,1], "joint graph")
-loo_table <- cbind(distribution, comp_round)
-colnames(loo_table) <- c("Distribution", "Normal", "Bad k%", "Gamma AR(0)", "Bad k%", "Gamma AR(1)", "Bad k%")
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   targetdata = holdout_index,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/no_holdout"), 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   reg_params = shrinkage_parameters,
+                                   normalize_values = TRUE)
 
-kable(loo_table, booktabs = T, caption = "Comparison of the LOO-PSIS approximations of the predictive performance for local and joint graph distributions in different model candidates.") %>%
-  kable_styling(latex_options = c("striped", "condensed"), full_width = TRUE) %>%
+write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs.graphml", "graphml")
+```
+
+#K-fold holdout
+
+Here we evaluate a separate model for each k (106) persons at the data while holding out all (4) measurements of one person at the time
+
+```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
+holdout_number <- 7
+holdout_subject <- sprintf("S%02d", holdout_number)
+
+holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
+holdout_index
+```
+
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
+sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
+                                   inputdata = sysdimet,
+                                   targetdata = holdout_index,
+                                   predictor_columns = assumedpredictors, 
+                                   assumed_targets = assumedtargets, 
+                                   group_column = "SUBJECT_ID",
+                                   local_estimation = mebn.sampling,
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/", holdout_number), 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   reg_params = shrinkage_parameters,
+                                   normalize_values = TRUE)
+
+write.graph(sysdimet_gamma_ar1_rhs_pred, paste0("subject_", holdout_number, ".graphml", "graphml")
+```
+
+# Evaluation of the model's predictive performance 
+
+```{r, message=FALSE, warning=FALSE}
+source("model_eval_functions.r")
+
+# Summary matrix for RHS model
+
+summary.mat <- matrix(0, nrow=nrow(assumedtargets),ncol=4)
+rownames(summary.mat) <- assumedtargets$Name
+colnames(summary.mat) <- c('week 4', 'week 8', 'week 12', '12 week change')
+
+allrep <- get_rep_response_for_all("BLMM_gamma/ar1_rhs/no_holdout/")
+
+# TODO: add non-shrinked evaluation in same table
+#allrep_norhs <- get_rep_response_for_all("BLMM_gamma/ar1/")
+
+number_of_preds <- 0
+
+amount_subjects <- length(levels(sysdimet$SUBJECT_ID))
+
+for (subject_number in 1:amount_subjects)
+{
+  number_of_preds <- number_of_preds + 1
+  
+  rep_response <- get_rep_response(allrep, subject_number)
+  true_response <- get_true_response(subject_number)
+  
+  rep_delta <- make_delta(rep_response)
+  true_delta <- make_delta(true_response)
+  
+  sign_matrix <- sign(rep_delta) == sign(true_delta)
+  avg_change <- sign(rowSums(true_response[,2:4])/3 - true_response[,1]) == sign(rowSums(rep_response[,2:4])/3 - rep_response[,1])
+  
+  summary.mat <- summary.mat + cbind(sign_matrix[,2:4]*1, avg_change*1)
+}
+
+percent.mat <- summary.mat/number_of_preds * 100
+
+percent.mat <- cbind(percent.mat, rowMeans(percent.mat[,1:3]))
+colnames(percent.mat) <- c('0 to 4 weeks', '4 to 8 weeks', '8 to 12 weeks', 'avg. 12 week change', 'avg. change acc.')
+
+percent.mat <- round(percent.mat, 0)
+
+```
+
+This visualization summarizes how accurately we can predict if blood test values raise or lower when the current level and a diet are known. This evaluates the model that uses shrinkage. 
+
+
+```{r model_summary}
+
+kable(percent.mat) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = TRUE) %>%
   row_spec(0,bold=TRUE)
 
-
-#kable(loo_table, "latex", booktabs = T, caption = "Comparison of the LOO-PSIS approximations of the predictive performance for local and joint graph #distributions in different model candidates.") %>%
+#kable(percent.mat, "latex", booktabs = T, caption = "Predictive accuracy percents for correct direction of change") %>%
 #  kable_styling(latex_options = c("striped", "condensed"), full_width = TRUE) %>%
 #  row_spec(0,bold=TRUE)
 
-#m1 <- mebn.get_localfit("BLMM_gamma/identity/fshdl")
-#m1_loglik <- extract_log_lik(m1, merge_chains = FALSE)
-#m1_rel_n_eff <- relative_eff(exp(m1_loglik))
-#m1_loo <- loo(m1_loglik, r_eff = m1_rel_n_eff, cores = 4)
-
-#m1_loo$estimates
-
-#m1_loo$diagnostics$pareto_k
-
-#pk1 <- pareto_k_table(m1_loo)
-#plot(m1_loo)
 ```
-
-All the estimations of LOO-PSIS include excessive percentage of bad Pareto k values, indicating that the LOO-PSIS approximation of the predictive performance cannot be trusted. This might be the hierarchy in data or high variance. As advised by Vehtari et al., an exact k-fold cross-validation should be conducted for the model.
 
 #Typical effects of nutrition, and variance from the typical effects
 
-We have now reached a reasonable good fit for the local distributions of the Bayesian network. Our code has extracted a graphical model from these  posterior distributions of random variables and parameters. The graph consists mean values of the posteriors and also their credible intervals. This is a lighter data structure for further analysis and allows also graph operations besides the regression modeling.
+We have now reached a reasonably good fit for the local distributions of the Bayesian network. Our code has extracted a graphical model from these  posterior distributions of random variables and parameters. The graph consists mean values of the posteriors and also their credible intervals. This is a lighter data structure for further analysis and allows also graph operations besides the regression modeling.
 
 Besides the random variables, the graph also includes the regression coefficients $\beta$ and $b$ that denote the typical and personal magnitudes of the effects for different nutrients. For better overview, let us plot the graph of typical nutritional effects. This visualization shows mean of posterior for typical coefficients $\beta$ as weight of the connection between blood test and nutrients at diet affecting it. For clarity, the visualization only shows 15 principal components explaining the variance of each blood test
 
-```{r, typical_effects_figure, fig.height = 6, fig.width = 6.7, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
+```{r, typical_effects_figure, fig.height = 6, fig.width = 7, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 require(igraph)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
@@ -435,28 +532,6 @@ for (i in c(1:nrow(assumedtargets)))
     personal_effects <- cbind(personal_effects, beta_b_blmm)
   }
 }
-
-```
-
-```{r personal_effects, echo=FALSE, cache=FALSE}
-
-# Pull effects form all patients to one vector
-nperson <- 106
-largest_personal_effects <- as.data.frame(as.vector(personal_effects))
-colnames(largest_personal_effects) <- c("amount")
-largest_personal_effects$abs_amount <- abs(largest_personal_effects$amount)
-largest_personal_effects$predictor <- rep(rep(assumedpredictors[feature_index,]$Description,nrow(assumedtargets)), nperson)
-
-cl <- rep(1,length(feature_index)) # number of predictors
-t_idx <- c(cl,cl+1,cl+2,cl+3,cl+4) # predictors x targets
-largest_personal_effects$response <- rep(assumedtargets$Description[t_idx], nperson)
-
-largest_personal_effects$effect <- paste0(largest_personal_effects$predictor," -> ", largest_personal_effects$response)
-
-largest_personal_effects <- largest_personal_effects[largest_personal_effects$abs_amount > 0,]
-largest_personal_effects <- largest_personal_effects[order(-largest_personal_effects$abs_amount),]
-largest_personal_effects <- largest_personal_effects[c("effect", "amount")]
-#largest_personal_effects
 
 ```
 
@@ -698,36 +773,10 @@ mebn.plot_clusters(cluster_data, cluster_index, assumedpredictors, assumedtarget
 ```
 In clusters 1 and 2 there are patients whose blood insulin levels react on lower and on higher than average. One interesting difference is lignin's effect to the blood insulin.
 
-#Predicting the personal reaction type for new patients
+#Personally predicted reaction types
 
-Finally, we can pick one the previously found reaction type clusters and hold aside the data for few of these patients. The goal would be then to use our model to predict the blood test values for this test group by their diet. This also reveals their personal reaction type for nutrition. We can compare this prediction to the true blood test values at dataset and also to the previous estimates from the whole sample population.
+Finally, we illustrate how big differences can be found amongst the persons and how nutritional recommendations differ for them.
 
-For testing, we sample a holdout set of patients overall the dataset. We then train a model without this holdout set and test how accurately we can place the predicted reaction types in previously found clusters. Note that we don't know the true reaction types for these patients. This makes absolute testing of prediction performance impossible, but in this way we can see at least if the prediction is consistent with analysis of the whole dataset. We know the previous cluster assiments of these holdout patients.
-
-```{r kfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-library(loo)
-
-set.seed(fixed_seed)
-
-#holdout_data <- sysdimet[sysdimet$variation_group==3,]
-#training_data <- sysdimet[!(sysdimet$SUBJECT_ID %in% holdout_data$SUBJECT_ID),]
-
-# Split the data in 10 folds and take 1 for holdout and rest for training
-# All the observations from one patient is included in the fold
-holdout_index <- kfold_split_stratified(K = 20, x = sysdimet$SUBJECT_ID)
-
-holdout_fold <- 1
-
-holdout_index[holdout_index == holdout_fold] <- 1
-holdout_index[holdout_index != holdout_fold] <- 0
-
-obs_per_person <- 4
-holdout_persons <- holdout_index[seq(1, length(holdout_index),obs_per_person)]
-holdout_persons <- which(holdout_persons %in% 1) # index of subjects
-holdout_persons
-```
-
-TODO: Pick iteratively persons for holdout and calculate their personal predictions. Try with one person first.
 
 ```{r personal_effects_holdout, echo=FALSE, eval=TRUE, message=FALSE}
 # Find persons with most different lignin->fsins effect
@@ -741,129 +790,38 @@ ligning_fsins_idx <- p*(ins_idx-1) + lignin_idx
 ligning_fsins <- as.data.frame(cbind(personal_effects[, ligning_fsins_idx], seq(1, nrow(personal_effects))))
 colnames(ligning_fsins) <- c("effect", "subject_id")
 
-# Pick most and least reacting patients
-holdout_persons <- c(head(ligning_fsins[order(-ligning_fsins$effect),],1)$subject_id, tail(ligning_fsins[order(-ligning_fsins$effect),],1)$subject_id)
-holdout_index <- sysdimet$SUBJECT_ID %in% sprintf("S%02d", holdout_persons)
+ordered_ligning_fsins <- ligning_fsins[order(-ligning_fsins$effect),]
 
-holdout_index[holdout_index == TRUE] <- 1
-holdout_index[holdout_index == FALSE] <- 0
+person_id1 <- head(ordered_ligning_fsins$subject_id,1)
+person_id2 <- tail(ordered_ligning_fsins$subject_id,1)
 
-# ligning_fsins$effect_group <- sysdimet$effect_group[seq(1,nrow(sysdimet),4)]
-#ligning_fsins[order(ligning_fsins$effect),]
 ```
 
+What reaction clusters these patients belong?
 
-```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-holdout_number <- 7
-holdout_subject <- sprintf("S%02d", holdout_number)
-
-holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
-holdout_index
+```{r, eval=FALSE, echo=FALSE}
+unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id1),]$effect_group)
+unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id2),]$effect_group)
 ```
-
-The predictive ability of the model might be reduced by overfitting to small nuances of the whole dataset. To overcome the possible overfitting, we apply the Finnish horseshoe, a shrinkage prior, on regression coefficients. It allows specifying a prior knowledge, or at least an educated guess, about the number of significant predictors for a target. Here we guess that one third of the nutrients might be relevant for any given blood test, and apply following parameters for the shrinkage
-
-```{r shrinkage_parameters, echo=TRUE, message=FALSE}
-shrinkage_parameters <- within(list(),
-{
-    scale_icept  <- 1         # prior std for the intercept
-    scale_global <- 0.01825   # scale for the half-t prior for tau: 
-                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
-    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
-    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
-    slab_scale   <- 1         # slab scale for the regularized horseshoe
-    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
-})
-```
-
-Next we fit the previous model with the Finnish horseshoe added. Besides the shrinkage parameters, we provide now the data in two sets: input data for estimation and target data to hold out for prediction. 
-
-```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
-source("mebn/MEBN.r")
-
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
-                                   inputdata = sysdimet,
-                                   targetdata = holdout_index,
-                                   predictor_columns = assumedpredictors, 
-                                   assumed_targets = assumedtargets, 
-                                   group_column = "SUBJECT_ID",
-                                   local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/no_holdout"), 
-                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
-                                   reg_params = shrinkage_parameters,
-                                   normalize_values = TRUE)
-
-write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs.graphml", "graphml")
-```
-
-```{r gamma_ar1__effrpred_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, fig.height=5, cache=TRUE}
-#t<-assumedtargets[assumedtargets$Name=="fsins",]
-#source("mebn/MEBN.r")
-#mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", assumedtargets, sysdimet[holdout_index==0,])
-```
-
-```{r gamma_arr1_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
-#temptarget <- assumedtargets[assumedtargets$Name=="fshdl",]
-#mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/2/", temptarget, sysdimet[sysdimet$SUBJECT_ID!='S02',])
-```
-
 
 ```{r personal_graph1, echo=FALSE, eval=FALSE}
-# set eval=FALSE if you need to need to upd
-source("mebn/MEBN.r")
-
-# TODO: Begin with a fully connected graph, update it with a typical information and here update the personal info
-
-initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
-personal_graph_S02 <- mebn.personal_graph(person_id = 2, 
-                                       reaction_graph = initial_graph, 
-                                       predictor_columns = assumedpredictors, 
-                                       assumed_targets = assumedtargets, 
-                                       local_model_cache = "BLMM_gamma/ar1_rhs/2/")
-
-write.graph(personal_graph_S02, "subject_02.graphml", "graphml")
-```
-
-```{r personal_graphvisu11, eval=TRUE, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE, warning=FALSE}
-source("mebn/MEBN.r")
-require(igraph)
-personal_graph_S02 <- read.graph("subject_02.graphml", "graphml")
-layout <- mebn.plot_personal_effects(personal_graph_S02, 20, graph_layout)
-```
-
-
-```{r define_holdout_persons, echo=FALSE}
-person_id1 <- head(holdout_persons,1)
-person_id2 <- tail(holdout_persons,1)
-
-```
-
-```{r personal_graph2, echo=FALSE, eval=FALSE}
-# set eval=FALSE if you need to need to upd
-source("mebn/MEBN.r")
-
-# TODO: Begin with a fully connected graph, update it with a typical information and here update the personal info
-
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 personal_graph1 <- mebn.personal_graph(person_id = person_id1, 
                                        reaction_graph = initial_graph, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
-                                       local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
+                                       local_model_cache = "BLMM_gamma/ar1_rhs/no_holdout")
 
 write.graph(personal_graph1, "personal_graph1.graphml", "graphml")
 ```
 
-```{r personal_graph3, echo=FALSE, eval=FALSE}
-source("mebn/MEBN.r")
-
+```{r personal_graph2, echo=FALSE, eval=FALSE}
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 personal_graph2 <- mebn.personal_graph(person_id = person_id2, 
                                        reaction_graph = initial_graph, 
                                        predictor_columns = assumedpredictors, 
                                        assumed_targets = assumedtargets, 
-                                       local_model_cache = "BLMM_gamma/ar1_rhs_effpred/")
+                                       local_model_cache = "BLMM_gamma/ar1_rhs/no_holdout")
 
 write.graph(personal_graph2, "personal_graph2.graphml", "graphml")
 ```
@@ -872,7 +830,7 @@ We can then compare the visualizations of the personal reaction graphs. The effe
 
 **Subject 94**
 
-```{r personal_graphvisu1, eval=TRUE, fig.height = 6, fig.width = 6.7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu1, eval=TRUE, fig.height = 6, fig.width = 7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph1 <- read.graph("personal_graph1.graphml", "graphml")
@@ -881,7 +839,7 @@ layout <- mebn.plot_personal_effects(personal_graph1, 20, graph_layout)
 
 **Subject 37**
 
-```{r personal_graphvisu22, eval=TRUE, fig.height = 6, fig.width = 6.7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
+```{r personal_graphvisu2, eval=TRUE, fig.height = 6, fig.width = 7, fig.align = "left", echo=FALSE, message=FALSE, warning=FALSE}
 source("mebn/MEBN.r")
 require(igraph)
 personal_graph2 <- read.graph("personal_graph2.graphml", "graphml")
@@ -926,9 +884,5 @@ bayesplot_grid(plots = list(cholmed_plot1, cholmed_plot2), legends = FALSE)
 
 ```
 
-```{r, eval=FALSE, echo=FALSE}
-unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id1),]$effect_group)
-unique(sysdimet[sysdimet$SUBJECT_ID == sprintf("S%02d", person_id2),]$effect_group)
-```
 
 #References
