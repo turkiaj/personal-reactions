@@ -294,7 +294,7 @@ write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs.graphml", "grap
 Here we evaluate a separate model for each k (106) persons at the data while holding out all (4) measurements of one person at the time
 
 ```{r nfold_holdout, echo=FALSE, eval=FALSE, message=FALSE}
-holdout_number <- 7
+holdout_number <- 20
 holdout_subject <- sprintf("S%02d", holdout_number)
 
 holdout_index <- as.vector(as.numeric(sysdimet$SUBJECT_ID == holdout_subject))
@@ -311,11 +311,14 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
                                    local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/", holdout_number), 
-                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_cv.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
 write.graph(sysdimet_gamma_ar1_rhs_pred, paste0("subject_", holdout_number, ".graphml", "graphml")
+            
+            
+#https://medium.com/@alex.pavlakis/making-predictions-from-stan-models-in-r-3e349dfac1ed            
 ```
 
 # Evaluation of the model's predictive performance 
