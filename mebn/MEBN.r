@@ -254,6 +254,47 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
 
 ##################################################
 
+mebn.set_prediction_parameters <- function(predictor_columns, target_column, inputdata, normalize_values, model_params = NULL)
+{
+  ident <- function(x) { return (x) }
+  
+  predictors <- inputdata[as.vector(predictor_columns$Name)]
+  target_name <- as.vector(target_column$Name)
+  
+  # Scale if the predictor is Gaussian
+  N <- nrow(inputdata)
+  
+  if (normalize_values == TRUE)
+  {
+    X <- sapply(1:nrow(assumedpredictors), mebn.scale_gaussians, data = inputdata, datadesc = assumedpredictors)
+    
+    # append intercept 
+    X <- cbind(rep(1,N), X)
+    
+    Y <- inputdata[target_name][,]
+  }
+  else
+  {
+    X <- cbind(rep(1,N), apply(predictors, 2, ident))
+    Y <- inputdata[target_name][,]
+  }
+  
+  params <- within(list(),
+                   {
+                     N <- N
+                     X <- X
+                     p <- k <- ncol(X)               # all predictors may have random effects
+                     Y <- Y
+                     Z <- X     
+                   })
+  
+  params <- c(params, model_params)
+  
+  return(params)
+}
+
+##################################################
+
 mebn.set_model_parameters2 <- function(predictor_columns, target_column, group_column, inputdata, targetdata = NULL, normalize_values, reg_params = NULL)
 {
   ident <- function(x) { return (x) }
@@ -766,6 +807,29 @@ mebn.sampling <- function(inputdata, targetdata, predictor_columns, target_colum
     saveRDS(localfit, file=modelcache)
   }
   
+  return(localfit)
+}  
+
+##################################################
+
+mebn.predict <- function(inputdata, predictor_columns, target_column, local_model_cache = "models", stan_model_file = "BLMM.stan", normalize_values = TRUE, model_params = NULL)
+{
+  require(rstan)
+  
+  # Run Stan parallel on multiple cores
+  rstan_options (auto_write=TRUE)
+  options (mc.cores=parallel::detectCores ()) 
+  
+  target_name <- as.vector(target_column$Name)
+
+  stanDat <- mebn.set_prediction_parameters(predictor_columns, target_column, inputdata, normalize_values, model_params)
+    
+  localfit <- stan(file=stan_model_file, 
+                   data=stanDat, 
+                   iter=1000, 
+                   chains=4,
+                  algorithm = "Fixed_param")
+
   return(localfit)
 }  
 
