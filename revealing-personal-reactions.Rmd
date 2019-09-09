@@ -316,6 +316,9 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    normalize_values = TRUE)
 
 write.graph(sysdimet_gamma_ar1_rhs_pred, paste0("subject_", holdout_number, ".graphml", "graphml")
+            
+            
+#https://medium.com/@alex.pavlakis/making-predictions-from-stan-models-in-r-3e349dfac1ed            
 ```
 
 

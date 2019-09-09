@@ -2,8 +2,8 @@
 data { 
   // new data
   int<lower=0> N;   // number of personal observations
-  int<lower=1> p;   // number of fixed predictors
-  int<lower=1> k;   // number of random predictors
+  int<lower=1> p;   // number of predictors
+  int<lower=1> k;   // number of group-level predictors
   matrix[N,p] X;    // fixed-effect design matrix
   matrix[N,k] Z;    // random-effect design matrix
   vector[N] Y;      // response
@@ -50,4 +50,4 @@ generated quantities {
       
     }
   }
-} 
+}
