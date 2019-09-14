@@ -82,6 +82,45 @@ assumedpredictors <- datadesc[datadesc$Order==100,]
 assumedtargets <- datadesc[datadesc$Order==200,] 
 ```
 
+```{r spagettiplot, echo=FALSE, fig.align="left", fig.height=8, fig.width=6, message=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(grid)
+
+plot_patients_index <- seq(1, length(levels(sysdimet$SUBJECT_ID)), 5)
+plot_patients <- levels(sysdimet$SUBJECT_ID)[plot_patients_index]
+
+sysdimet_every_10th <- sysdimet[sysdimet$SUBJECT_ID %in% plot_patients,]
+
+hdlplot <- ggplot() +
+  geom_line(data=sysdimet_every_10th, aes(y = fshdl, x=WEEK, color=SUBJECT_ID), size=1, show.legend = FALSE) +
+  scale_x_discrete(limits=c(0,4,8,12)) +
+  labs(x = "Week", y = "HDL-chol. (mmol/l)") + theme(axis.title.x = element_blank())
+
+ldlplot <- ggplot() +
+  geom_line(data=sysdimet_every_10th, aes(y = fsldl, x=WEEK, color=SUBJECT_ID), size=1, show.legend = FALSE) +
+  scale_x_discrete(limits=c(0,4,8,12)) +
+  labs(x = "Week", y = "LDL-chol. (mmol/l)") + theme(axis.title.x = element_blank())
+
+insplot <- ggplot() +
+  geom_line(data=sysdimet_every_10th, aes(y = fsins, x=WEEK, color=SUBJECT_ID), size=1, show.legend = FALSE) +
+  scale_x_discrete(limits=c(0,4,8,12)) +
+  labs(x = "Week", y = "Insulin (mmol/l)") + theme(axis.title.x = element_blank())
+
+kolplot <- ggplot() +
+  geom_line(data=sysdimet_every_10th, aes(y = fskol, x=WEEK, color=SUBJECT_ID), size=1, show.legend = FALSE) +
+  scale_x_discrete(limits=c(0,4,8,12)) +
+  labs(x = "Week", y = "Total chol. (mmol/l)") + theme(axis.title.x = element_blank())
+
+glukplot <- ggplot() +
+  geom_line(data=sysdimet_every_10th, aes(y = fpgluk, x=WEEK, color=SUBJECT_ID), size=1, show.legend = FALSE) +
+  scale_x_discrete(limits=c(0,4,8,12)) +
+  labs(x = "Week", y = "Glucose (mmol/l)") 
+
+grid.arrange(hdlplot, ldlplot, kolplot, insplot, glukplot, nrow = 5, ncol=1, padding=0) 
+
+```
+
 ```{r graph, fig.height = 8, fig.width = 10, fig.align = "center", echo=FALSE, message=FALSE}
 library(igraph)
 initial_graph <- mebn.fully_connected_bipartite_graph(datadesc)
@@ -350,6 +389,12 @@ personal_pred <- mebn.predict(inputdata = sysdimet[holdout_index == 1,],
                               stan_model_file = "mebn/BLMM_gamma_ar1_pred.stan",
                               model_params = model_parameters,
                               normalize_values = TRUE)
+
+dim(post$b)  # sample x person x effect (int + b 22) 4000 x 106 x 23
+
+p20 <- post$b[,20,]
+
+dim(p20)
 
 ```
 
