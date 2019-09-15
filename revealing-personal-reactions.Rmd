@@ -390,11 +390,23 @@ personal_pred <- mebn.predict(inputdata = sysdimet[holdout_index == 1,],
                               model_params = model_parameters,
                               normalize_values = TRUE)
 
-dim(post$b)  # sample x person x effect (int + b 22) 4000 x 106 x 23
+p <- as.matrix(personal_pred$Y_pred)
 
-p20 <- post$b[,20,]
+ext_pred <- extract(personal_pred)
 
-dim(p20)
+out_mat <- matrix(NA, nrow = dim(ext_pred$Y_pred)[2], ncol = dim(ext_pred$Y_pred)[3])
+
+for(i in 1:dim(ext_pred$Y_pred)[2]) {
+  for(j in 1:dim(ext_pred$Y_pred)[3]) {
+      out_mat[i, j] <- mean(ext_pred$Y_pred[, i, j])
+  }
+}
+
+apply(out_mat, 2, median) 
+# 1.128862 1.173793 1.138832 1.121819
+
+sysdimet[holdout_index == 1,]$fshdl
+# 1.09 1.14 1.33 1.22
 
 ```
 

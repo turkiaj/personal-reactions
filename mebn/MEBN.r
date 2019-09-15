@@ -254,19 +254,11 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
 
 ##################################################
 
-<<<<<<< HEAD
 mebn.set_prediction_parameters <- function(predictor_columns, target_column, inputdata, normalize_values, model_params = NULL)
 {
   ident <- function(x) { return (x) }
   
   predictors <- inputdata[as.vector(predictor_columns$Name)]
-=======
-mebn.set_prediction_parameters <- function(predictor_columns, target_column, group_column, inputdata, targetdata = NULL, normalize_values, model_params = NULL)
-{
-  ident <- function(x) { return (x) }
-  predictors <- inputdata[as.vector(predictor_columns$Name)]
-  
->>>>>>> 3798e7636554f55c8a13563c716d3f26bb620d38
   target_name <- as.vector(target_column$Name)
   
   # Scale if the predictor is Gaussian
@@ -275,10 +267,6 @@ mebn.set_prediction_parameters <- function(predictor_columns, target_column, gro
   if (normalize_values == TRUE)
   {
     X <- sapply(1:nrow(assumedpredictors), mebn.scale_gaussians, data = inputdata, datadesc = assumedpredictors)
-    
-    # append intercept 
-    X <- cbind(rep(1,N), X)
-    
     Y <- inputdata[target_name][,]
   }
   else
@@ -291,7 +279,7 @@ mebn.set_prediction_parameters <- function(predictor_columns, target_column, gro
                    {
                      N <- N
                      X <- X
-                     p <- k <- ncol(X)               # all predictors may have random effects
+                     p <- k <- ncol(X)              # all predictors may have random effects, intercept not included
                      Y <- Y
                      Z <- X     
                    })
@@ -820,11 +808,7 @@ mebn.sampling <- function(inputdata, targetdata, predictor_columns, target_colum
 
 ##################################################
 
-<<<<<<< HEAD
 mebn.predict <- function(inputdata, predictor_columns, target_column, local_model_cache = "models", stan_model_file = "BLMM.stan", normalize_values = TRUE, model_params = NULL)
-=======
-mebn.predict <- function(inputdata, targetdata, predictor_columns, target_column, local_model_cache = "models", stan_mode_file = "BLMM.stan", normalize_values = TRUE, reg_params = NULL)
->>>>>>> 3798e7636554f55c8a13563c716d3f26bb620d38
 {
   require(rstan)
   
@@ -833,27 +817,14 @@ mebn.predict <- function(inputdata, targetdata, predictor_columns, target_column
   options (mc.cores=parallel::detectCores ()) 
   
   target_name <- as.vector(target_column$Name)
-<<<<<<< HEAD
 
   stanDat <- mebn.set_prediction_parameters(predictor_columns, target_column, inputdata, normalize_values, model_params)
     
   localfit <- stan(file=stan_model_file, 
                    data=stanDat, 
-                   iter=1000, 
-                   chains=4,
-                  algorithm = "Fixed_param")
-=======
-  
-  stanDat <- mebn.set_prediction_parameters(predictor_columns, target_column, group_column, inputdata, targetdata, normalize_values, model_params)
-    
-  localfit <- stan(file=stan_mode_file, 
-                   data=stanDat, 
-                   iter=1000, 
-                   chains=4,
-                   init=0,
+                   iter=100, 
+                   chains=1,
                    algorithm = "Fixed_param")
->>>>>>> 3798e7636554f55c8a13563c716d3f26bb620d38
-
   return(localfit)
 }  
 
