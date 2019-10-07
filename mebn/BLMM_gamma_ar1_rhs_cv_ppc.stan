@@ -156,7 +156,10 @@ model {
 }
 
 generated quantities { 
+  corr_matrix[k] C;               // correlation matrix 
   vector[NH] Y_pred;              // predicted response
+  vector[N-NH] Y_rep;             // repeated response
+  vector[N] log_lik;            // log-likelihood for LOO
   real mu_hat;
   real g_beta_hat;
   int group_size = 0;     // group variables for AR computation
@@ -164,6 +167,9 @@ generated quantities {
 
   vector[k-1] personal_effect[J];
 
+  // Correlation matrix of random-effects, C = L'L
+  C = multiply_lower_tri_self_transpose(L); 
+  
   // Posterior prediction for holdout person
   
   for (n in 1:NH)
@@ -188,6 +194,33 @@ generated quantities {
       Y_pred[n] = gamma_rng(g_alpha, g_beta_hat) - offset;
   }
 
+  // Posterior predictive distribution for model checking
+
+  group_size = 0;     // group variables for AR computation
+  current_group = -1; // group variables for AR computation
+
+  for (n in 1:N-NH)
+  {
+    mu_hat = beta_Intercept + offset + X_t[n] * beta + Z_t[n] * b[group[n]];
+    
+    if (current_group != group[n]) {
+      current_group = group[n];
+      group_size = 1;
+    } 
+    else
+      group_size += 1;
+
+    // - add autoregression coefficient from previous possibly correlated observation 
+    if (group_size > 1)
+      mu_hat += Y_t[n-1] * ar1;
+      
+    g_beta_hat = g_alpha / mu_hat;
+    Y_rep[n] = gamma_rng(g_alpha, g_beta_hat) - offset;
+    
+    // Compute log-Likelihood for later LOO comparison of the models 
+    log_lik[n] = gamma_lpdf(Y_t[n] | g_alpha, g_beta_hat);
+  }
+  
   // Personal effects for both training and holdout persons 
   for (j in 1:J) 
   {

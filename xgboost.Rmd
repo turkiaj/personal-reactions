@@ -1,0 +1,106 @@
+---
+title: "XGBoost comparison"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(kableExtra) # for good looking tables
+
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+
+# this allows using tikz rendering for plots with "dev=tikz"
+knit_hooks$set(plot = function(x, options) {
+  if ('tikz' %in% options$dev && !options$external) {
+    hook_plot_tex(x, options)
+  } else hook_plot_md(x, options)
+})
+
+# Fix seed for random number generator for getting consistent results in kmeans etc.
+fixed_seed <- 678
+
+# Load common MEBN package
+source("mebn/MEBN.r")
+```
+
+## XGBoost
+
+https://cran.r-project.org/web/packages/xgboost/vignettes/xgboostPresentation.html
+
+
+```{r}
+library(xgboost)
+library(readr)
+library(stringr)
+library(caret)
+```
+
+
+```{r load_data}
+data(agaricus.train, package='xgboost')
+data(agaricus.test, package='xgboost')
+train <- agaricus.train
+test <- agaricus.test
+```
+
+```{r basic_training}
+bstSparse <- xgboost(data = train$data, label = train$label, max_depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic")
+```
+
+
+```{r}
+xgb <- xgboost(data = data.matrix(X[,-1]), 
+ label = y, 
+ eta = 0.1,
+ max_depth = 15, 
+ nround=25, 
+ subsample = 0.5,
+ colsample_bytree = 0.5,
+ seed = 1,
+ eval_metric = "merror",
+ objective = "multi:softprob",
+ num_class = 12,
+ nthread = 3
+)
+```
+
+```{r}
+dtrain <- xgb.DMatrix(data = train$data, label = train$label)
+bst <- xgboost(data = dtrain, max_depth = 2, eta = 1, nthread = 2, nrounds = 25, objective = "binary:logistic", verbose = 2)
+```
+
+
+```{r}
+pred <- predict(bst, test$data)
+head(pred)
+```
+```{r}
+prediction <- as.numeric(pred > 0.5)
+print(head(prediction))
+```
+
+```{r}
+label = getinfo(dtest, "label")
+pred <- predict(bst, dtest)
+err <- as.numeric(sum(as.integer(pred > 0.5) != label))/length(label)
+print(paste("test-error=", err))
+```
+
+```{r}
+importance_matrix <- xgb.importance(model = bst)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix = importance_matrix)
+
+```
+
+```{r}
+# Compute feature importance matrix
+importance_matrix <- xgb.importance(names, model = xgb)
+# Nice graph
+xgb.plot.importance(importance_matrix[1:10,])
+```
+
+```{r}
+barplot(importance_matrix[,1])
+```
+

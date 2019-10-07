@@ -161,10 +161,10 @@ mebn.renormalize <- function(x, org_min, org_max) { return ((x + org_min) * (org
 
 ##################################################
 
-mebn.scale <- function(x, org_sd) 
+mebn.standardize <- function(x, org_mean, org_sd) 
 { 
-  #n_scaled <- ((x - org_mean) / org_sd) + 100
-  n_scaled <- x / org_sd
+  n_scaled <- (x - org_mean) / org_sd
+  #n_scaled <- x / org_sd
   return(n_scaled)
 }
 
@@ -189,9 +189,12 @@ mebn.scale_gaussians <- function(r, data, datadesc)
   
   if (datadesc[r,]$Distribution == "Gaussian")
   {
-    # TODO: Scale also returns the scaling factor. Store it to restore the original scale.
-    s <- mebn.scale(s, sd(s))
-    #s <- mebn.normalize(s, min(s), max(s))
+    if (sum(s) != 0)
+    {
+      # TODO: Scale also returns the scaling factor. Store it to restore the original scale.
+      s <- mebn.standardize(s, mean(s), sd(s))
+      #s <- mebn.normalize(s, min(s), max(s))
+    }
   }
   
   return (s) 
@@ -244,7 +247,7 @@ mebn.set_model_parameters <- function(predictor_columns, target_column, group_co
                      J <- length(levels(inputdata[[group_column]]))
                      group <- as.integer(inputdata[[group_column]])
                      holdout <- targetdata
-                     offset <- 15
+                     offset <- 20
                    })
   
   params <- c(params, reg_params)
@@ -275,13 +278,16 @@ mebn.set_prediction_parameters <- function(predictor_columns, target_column, inp
     Y <- inputdata[target_name][,]
   }
   
+  # append intercept 
+  Z <- cbind(rep(1,N), X)
+  
   params <- within(list(),
                    {
                      N <- N
                      X <- X
                      p <- k <- ncol(X)              # all predictors may have random effects, intercept not included
                      Y <- Y
-                     Z <- X     
+                     Z <- Z     
                    })
   
   params <- c(params, model_params)
@@ -822,9 +828,9 @@ mebn.predict <- function(inputdata, predictor_columns, target_column, local_mode
     
   localfit <- stan(file=stan_model_file, 
                    data=stanDat, 
-                   iter=100, 
-                   chains=1,
-                   algorithm = "Fixed_param")
+                   iter=1000, 
+                   chains=4)
+
   return(localfit)
 }  
 

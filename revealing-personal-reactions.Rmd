@@ -295,8 +295,21 @@ The predictive ability of the model might be reduced by overfitting to small nua
 shrinkage_parameters <- within(list(),
 {
     scale_icept  <- 1         # prior std for the intercept
-    scale_global <- 0.01825   # scale for the half-t prior for tau: 
-                              # ((p0=6) / (D=22-6)) * (sigma / sqrt(n=106*4))
+    scale_global <- 0.04856   # scale for the half-t prior for tau: 
+                              # ((p0=11) / (D=22-11)) * (sigma = 1 / sqrt(n=106*4))
+    nu_global    <- 1         # degrees of freedom for the half-t priors for tau
+    nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
+    slab_scale   <- 1         # slab scale for the regularized horseshoe
+    slab_df      <- 1         # slab degrees of freedom for the regularized horseshoe           
+})
+```
+
+```{r shrinkage_parameters, echo=TRUE, message=FALSE}
+shrinkage_parameters <- within(list(),
+{
+    scale_icept  <- 1         # prior std for the intercept
+    scale_global <- 1         # scale for the half-t prior for tau: 
+                              # ((p0=11) / (D=22-11)) * (sigma = 1 / sqrt(n=106*4))
     nu_global    <- 1         # degrees of freedom for the half-t priors for tau
     nu_local     <- 1         # degrees of freedom for the half-t priors for lambdas
     slab_scale   <- 1         # slab scale for the regularized horseshoe
@@ -308,7 +321,7 @@ Next we fit the previous model with the Finnish horseshoe added. Besides the shr
 
 ```{r}
 # One RHS model with all data (no_holdout)
-holdout_index <- NULL
+holdout_index <- rep(0, nrow(sysdimet))
 ```
 
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
@@ -320,12 +333,12 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    assumed_targets = assumedtargets, 
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
-                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/no_holdout"), 
-                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
+                                   local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/no_shrink"), 
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_cv_ppc.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs.graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, "sysdimet_gamma_ar1_rhs_noshrink.graphml", "graphml")
 ```
 
 #K-fold holdout
@@ -341,6 +354,8 @@ holdout_index
 ```
 
 ```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+source("mebn/MEBN.r")
+
 initial_graph <- mebn.new_graph_with_randomvariables(datadesc)
 sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_graph, 
                                    inputdata = sysdimet,
@@ -350,34 +365,97 @@ sysdimet_gamma_ar1_rhs_pred <- mebn.bipartite_model(reaction_graph = initial_gra
                                    group_column = "SUBJECT_ID",
                                    local_estimation = mebn.sampling,
                                    local_model_cache = paste0("models/BLMM_gamma/ar1_rhs/", holdout_number), 
-                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_cv.stan",
+                                   stan_model_file = "mebn/BLMM_gamma_ar1_rhs_pred3.stan",
                                    reg_params = shrinkage_parameters,
                                    normalize_values = TRUE)
 
-write.graph(sysdimet_gamma_ar1_rhs_pred, paste0("subject_", holdout_number, ".graphml", "graphml")
+write.graph(sysdimet_gamma_ar1_rhs_pred, paste0("subject_", holdout_number, ".graphml"), "graphml")
             
             
 #https://medium.com/@alex.pavlakis/making-predictions-from-stan-models-in-r-3e349dfac1ed            
 ```
 
+```{r subject_20_ppc, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE, cache=TRUE}
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/20/", assumedtargets, sysdimet[holdout_index == 0,])
+mebn.target_dens_overlays("BLMM_gamma/ar1_rhs/no_holdout2/", assumedtargets, sysdimet[holdout_index == 0,])
+```
+
 
 ```{r}
 library(rstan)
+library(bayesplot)
+library(shinystan)
 
 # get fitted model
+
 fit <- mebn.get_localfit("fshdl", "models/BLMM_gamma/ar1_rhs/20/")
+
+launch_shinystan(fit)
 
 # extract parameters for prediction
 post <- extract(fit)
 
+colMeans(post$Y_pred)-15
+
+sysdimet[holdout_index == 1,]$fs# Korjattu D:n laskenta.
+
+C <- colMeans(post$C)
+Tau <- diag(colMeans(post$sigma_b))
+
+D <- t(Tau) %*% C %*% Tau
+
+# Älä ota 5-mallista suoraan
+D <- matrix(NA, nrow = 23, ncol = 23)
+
+for(i in 1:23) {
+  for(j in 1:23) {
+      D[i, j] <- mean(post$Sigma_b[1,i,j])
+  }
+}
+
+L <- matrix(NA, nrow = 23, ncol = 23)
+
+for(i in 1:23) {
+  for(j in 1:23) {
+      L[i, j] <- mean(post$L[1,i,j])
+  }
+}
+
+ms <- summary(fit, pars=c("b"), probs=c(0.10, 0.90), na.rm = TRUE)
+ms$summary[startsWith(rownames(ms$summary),"b[20,"),1]
+
+#     b[20,1]       b[20,2]       b[20,3]       b[20,4]       b[20,5]       b[20,6]       b[20,7]       b[20,8]       b[20,9]      b[20,10]      b[20,11] 
+# -0.0602182189  0.0280217425 -0.0694126613  0.0028832283 -0.0004821366  0.0017659737 -0.0001954021  0.0016899729  0.0050423494  0.0037150165  0.0045790093 
+#     b[20,12]      b[20,13]      b[20,14]      b[20,15]      b[20,16]      b[20,17]      b[20,18]      b[20,19]      b[20,20]      b[20,21]      b[20,22] 
+# -0.0009529707 -0.0013305958 -0.0026054079 -0.0009622061 -0.0032447832  0.0014555480  0.0027553903  0.0081048457 -0.0043539394  0.0028340062  0.0057056429 
+#     b[20,23] 
+# 0.0033670885 
+
+# TODO: Saatko nämä b:t ennustamalla?
+# holdout-20 malli toimii nyt hyvin (hyvä, Jari!!)
+# saisiko personal mallilla ennustettua samat b: subject 20:lle kuin yllä? sitten olisi kova!
+
+# Ei ole samat mutta sinne päin
+
+# [1] -0.0838398589  0.1070658606  0.0271780657  0.0027974472  0.0320693711  0.0016978262  0.0027452497 -0.0010793048 -0.0073877829  0.0291718940  0.0011960456
+#[12]  0.0008135937  0.0077115590  0.0044525938  0.0009330106 -0.0052942559  0.0212431580 -0.0262778957 -0.0033434961 -0.0253076765 -0.0022820497  0.0023553695
+#[23]  0.0009539895
+
+#mean(post$beta_Intercept)
+# -> 11.23094 , tässä oli siis 10 offset liikaa
+# temp_Intercept on nyt oikein 1.23 !! meneekö se nyt kohdalleen jo suoraan kun Y:hyn lisättiin offset?
+
 model_parameters <- within(list(),
 {
-    N_samples <- length(post$beta_Intercept)
-    beta_Intercept <- post$beta_Intercept # population-level intercept (vector[N_samples])
+    N_samples <- length(post$temp_Intercept)
+    beta_Intercept <- post$temp_Intercept # population-level intercept (vector[N_samples])
     beta <- post$beta                     # population-level effects (matrix[N_samples, p])
     ar1 <- post$ar1                       # AR(1) coefficient of autoregressive process (vector[N_samples])
     g_alpha <- post$g_alpha               # alpha (shape) parameter of the gamma distribution (vector[N_samples])
-    Sigma_b <- post$Sigma_b               # variance-covariance matrix of group-level effects (matrix[N_samples, k+1, k+1])
+    Sigma_b <-D     # lower diag variance-covariance matrix of personal effects (matrix[N_samples, k+1, k+1])
+    L_prior <- post$L
+    sigma_b_prior <- post$sigma_b
+    b2 <- post$b[,2,]
 })
 
 source("mebn/MEBN.r")
@@ -386,27 +464,63 @@ personal_pred <- mebn.predict(inputdata = sysdimet[holdout_index == 1,],
                               predictor_columns = assumedpredictors, 
                               target_column = assumedtargets[assumedtargets$Name == "fshdl",], 
                               local_model_cache = paste0("models/BLMM_gamma/ar1_rhs_pred/", holdout_number), 
-                              stan_model_file = "mebn/BLMM_gamma_ar1_pred.stan",
+                              stan_model_file = "mebn/BLMM_gamma_ar1_personal.stan",
                               model_params = model_parameters,
                               normalize_values = TRUE)
 
-p <- as.matrix(personal_pred$Y_pred)
-
 ext_pred <- extract(personal_pred)
+dim(ext_pred$b)
+dim(ext_pred$Y_rep)
 
-out_mat <- matrix(NA, nrow = dim(ext_pred$Y_pred)[2], ncol = dim(ext_pred$Y_pred)[3])
+colMeans(ext_pred$Y_rep) + 20
+colMeans(ext_pred$b)
 
-for(i in 1:dim(ext_pred$Y_pred)[2]) {
-  for(j in 1:dim(ext_pred$Y_pred)[3]) {
-      out_mat[i, j] <- mean(ext_pred$Y_pred[, i, j])
+out_mat <- matrix(NA, nrow = dim(ext_pred$Y_rep)[2], ncol = dim(ext_pred$Y_rep)[3])
+
+for(i in 1:dim(ext_pred$Y_rep)[2]) {
+  for(j in 1:dim(ext_pred$Y_rep)[3]) {
+      out_mat[i, j] = mean(ext_pred$Y_rep[, i, j])
   }
 }
 
 apply(out_mat, 2, median) 
 # 1.128862 1.173793 1.138832 1.121819
 
+# Yritetään ennustaa Rllä
+
+sysdimet_scaled <- sapply(1:nrow(assumedpredictors), mebn.scale_gaussians, data = sysdimet, datadesc = assumedpredictors)
+
+w0 <- sysdimet_scaled[holdout_index == 1 & sysdimet$WEEK == 0,]
+w1 <- sysdimet_scaled[holdout_index == 1 & sysdimet$WEEK == 4,]
+
+Y0 <- sysdimet[holdout_index == 1 & sysdimet$WEEK == 0,]$fshdl
+Y1 <- sysdimet[holdout_index == 1 & sysdimet$WEEK == 4,]$fshdl
+
+X <- w1
+Z <- c(1, X)
+
+beta <- colMeans(post$beta)
+g_alpha <- mean(post$g_alpha)
+beta_Intercept <- mean(post$beta_Intercept)
+ar1 <- mean(post$ar1)
+b <- colMeans(post$b[,2,])
+
+mu <- beta_Intercept + t(X) %*% beta + ar1 * Y0
+
+Y_pred <- mean(rgamma(1000, g_alpha, g_alpha / mu))
+Y_pred
+
+# S02, w1 (4) 1.46817
+mean(post$Y_rep[,6])
+
 sysdimet[holdout_index == 1,]$fshdl
-# 1.09 1.14 1.33 1.22
+# 1.09 1.14 1.33 1.22 (S20)
+
+#colMeans(ext_pred$Y_rep) + 20
+#[1] 1.103174 1.075349 1.272530 1.161368
+
+
+colMeans(ext_pred$b)
 
 ```
 
@@ -480,8 +594,10 @@ Besides the random variables, the graph also includes the regression coefficient
 ```{r, typical_effects_figure, fig.height = 6, fig.width = 7, echo=FALSE, fig.align = "left", message=FALSE, warning=FALSE, cache=TRUE}
 source("mebn/MEBN.r")
 require(igraph)
-sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
-#sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs.graphml", "graphml")
+#sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs_pred.graphml", "graphml") # scale_global <- 0.01825
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs.graphml", "graphml") # scale_global <- 0.05
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs_cv_ppc.graphml", "graphml") # scale_global <- 0.04856
 graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
 ```
 
@@ -489,6 +605,7 @@ graph_layout <- mebn.plot_typical_effects(sysdimet_gamma_ar1, 20)
 library(igraph)
 library(dplyr)
 sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1.graphml", "graphml")
+sysdimet_gamma_ar1 <- read_graph("sysdimet_gamma_ar1_rhs_cv_ppc.graphml", "graphml")
 
 # Query the graph for typical strengths of the effects
 allnodes <- V(sysdimet_gamma_ar1)
